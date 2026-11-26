@@ -12,14 +12,18 @@
 // early but collected logs, the map shows what was collected and
 // says the window is partial. It never draws a fake map.
 //
-// Color fix (2026-11-26): the old fills were 0.10 to 0.16 alpha over
-// a near-black background, so every bubble read as the same dark
-// disc and only a thin stroke carried the category color, while the
-// legend showed solid dots. Fills are now solid. Each category also
-// has a second cue that is not color: the first minter gets a double
-// ring, the pair a dashed stroke, the burn a dotted stroke, and each
-// special bubble a letter badge. The legend draws the same fill,
-// stroke and dash as the bubbles, so legend and map always match.
+// Legibility fix (2026-11-27): a live all-holders scan showed 12
+// identical slate-grey bubbles, every one "<0.0001%", with no minter,
+// contract, or pair anywhere. Burn (#6b7280) and holder (#475569)
+// were both grey, holders printed no label, absent categories were
+// silent, and the share text was identical on every bubble. Burn is
+// now charred near-black with an ember-orange dashed stroke, ember
+// dots, and a B badge at any size; holder is a real blue with the
+// word "holder" printed under every holder bubble; the map says
+// plainly which special categories did not move in the window and
+// dims their legend entries; every bubble carries its rank by net
+// movement (#1 to #12) next to the share, or alone on micro
+// bubbles, so two bubbles never look identical.
 //
 // Connecting lines come only from the real Transfer logs: the top 8
 // biggest moves, drawn only where both ends are shown bubbles.
@@ -40,7 +44,7 @@ const BURN_SET = new Set(BURN_ADDRESSES.map((a) => a.toLowerCase()));
 
 type Kind = "minter" | "contract" | "pair" | "burn" | "holder";
 
-const KIND_STYLE: Record<
+export const KIND_STYLE: Record<
   Kind,
   {
     fill: string;
@@ -52,6 +56,7 @@ const KIND_STYLE: Record<
     label: string;
     badge: string | null; // letter badge inside big enough bubbles
     blurb: string; // plain-English meaning for the legend
+    dots: boolean; // ember dots inside a burn bubble
   }
 > = {
   minter: {
@@ -64,6 +69,7 @@ const KIND_STYLE: Record<
     label: "first minter",
     badge: "M",
     blurb: "the wallet that first received new tokens",
+    dots: false,
   },
   contract: {
     fill: "#34d399",
@@ -75,6 +81,7 @@ const KIND_STYLE: Record<
     label: "contract",
     badge: "C",
     blurb: "the token contract itself",
+    dots: false,
   },
   pair: {
     fill: "#fbbf24",
@@ -86,28 +93,31 @@ const KIND_STYLE: Record<
     label: "pair",
     badge: "P",
     blurb: "the trading pool where people buy and sell",
+    dots: false,
   },
   burn: {
-    fill: "#6b7280",
-    stroke: "#374151",
+    fill: "#0c0a12",
+    stroke: "#f97316",
     strokeWidth: 2.5,
-    dash: "2 4",
+    dash: "6 3",
     ring: false,
     text: "#f2f0ea",
     label: "burn",
     badge: "B",
     blurb: "tokens sent to an address nobody can spend from",
+    dots: true,
   },
   holder: {
-    fill: "#475569",
-    stroke: "#94a3b8",
+    fill: "#3b82f6",
+    stroke: "#93c5fd",
     strokeWidth: 1.5,
     dash: undefined,
     ring: false,
     text: "#f2f0ea",
-    label: "",
+    label: "holder",
     badge: null,
     blurb: "a wallet holding the token",
+    dots: false,
   },
 };
 
@@ -118,12 +128,27 @@ interface Bubble {
   address: string;
   share: number | null;
   kind: Kind;
+  // Rank by net movement in the window, 1 for the biggest mover.
+  // pack() assigns it from the sorted order it already uses, so no
+  // new data is invented. Optional so test fixtures that build
+  // bubbles by hand for visibleEdges keep working.
+  rank?: number;
 }
 
 export interface MapEdge {
   from: Bubble;
   to: Bubble;
   value: string;
+}
+
+// Special categories not among the shown bubbles, for the plain
+// "not in this window" note and dimmed legend entries. Holder is
+// never absent: every shown bubble that is not special is a holder.
+// Pure, so it is unit-testable.
+export function absentSpecialKinds(present: Kind[]): Kind[] {
+  return (["minter", "contract", "pair", "burn"] as Kind[]).filter(
+    (k) => !present.includes(k),
+  );
 }
 
 // Edges for the map: the biggest moves, but only where both ends
@@ -259,6 +284,9 @@ export function pack(
       address: item.address,
       share: item.share,
       kind: item.kind,
+      // placed grows in sorted order (biggest mover first), so the
+      // position in the placed list is the rank by net movement.
+      rank: placed.length + 1,
     });
   }
   return placed;
@@ -289,6 +317,13 @@ function LegendSwatch({ kind }: { kind: Kind }) {
         strokeWidth="1.5"
         strokeDasharray={s.dash}
       />
+      {s.dots && (
+        <g fill="#f97316">
+          <circle cx="5.5" cy="6" r="1" />
+          <circle cx="10.5" cy="6.5" r="1" />
+          <circle cx="8" cy="10.5" r="1" />
+        </g>
+      )}
     </svg>
   );
 }
@@ -392,6 +427,11 @@ export default function BubbleMap({
   });
   const bubbles = pack(items, 600, 380);
   const edges = visibleEdges(bubbles, summary.biggestMoves);
+  // Special categories that are not among the shown bubbles. The map
+  // says so plainly instead of leaving the user hunting for purple,
+  // green, yellow, or ember that is not there. Holder is never
+  // absent: every shown bubble that is not special is a holder.
+  const absentSpecial = absentSpecialKinds(bubbles.map((b) => b.kind));
   const shownShare = items.reduce((s, i) => s + (i.share ?? 0), 0);
   const remainder = Math.max(0, 100 - shownShare);
   // formatShare rounds 99.9996% to "100.0%", which reads wrong next
@@ -447,6 +487,12 @@ export default function BubbleMap({
           {analysis.logsFailed
             ? "Partial window: the Transfer-log scan stopped early, so these bubbles cover only part of the window."
             : "Partial window: the scan stopped at the event cap, so these bubbles cover only part of the window."}
+        </p>
+      )}
+      {absentSpecial.length > 0 && (
+        <p className="mb-3 font-mono text-xs leading-relaxed text-[var(--muted)]">
+          No {absentSpecial.map((k) => KIND_STYLE[k].label).join(", ")}{" "}
+          moved in this window, so those colors are not on this map.
         </p>
       )}
       <svg
@@ -552,7 +598,7 @@ export default function BubbleMap({
                 (e.from.address.toLowerCase() === b.address.toLowerCase() ||
                   e.to.address.toLowerCase() === b.address.toLowerCase()),
             );
-          const ariaName = `${style.label || "holder"} ${shortAddress(b.address)}, ${formatShare(b.share)} of supply. Press Enter for details.`;
+          const ariaName = `#${b.rank ?? idx + 1} ${style.label} ${shortAddress(b.address)}, ${formatShare(b.share)} of supply. Press Enter for details.`;
           return (
             <g
               key={b.address}
@@ -623,7 +669,26 @@ export default function BubbleMap({
                 strokeWidth={style.strokeWidth}
                 strokeDasharray={style.dash}
               />
-              {style.badge && b.r >= 30 && (
+              {style.dots && (
+                <g fill="#f97316" opacity={0.9}>
+                  <circle
+                    cx={b.x - b.r * 0.5}
+                    cy={b.y - b.r * 0.35}
+                    r={2.2}
+                  />
+                  <circle
+                    cx={b.x + b.r * 0.45}
+                    cy={b.y - b.r * 0.4}
+                    r={2.2}
+                  />
+                  <circle
+                    cx={b.x + b.r * 0.45}
+                    cy={b.y + b.r * 0.5}
+                    r={2.2}
+                  />
+                </g>
+              )}
+              {style.badge && (
                 <g>
                   <circle
                     cx={b.x}
@@ -651,10 +716,13 @@ export default function BubbleMap({
                 y={b.y - 2}
                 textAnchor="middle"
                 fontSize={b.r > 40 ? 13 : 11}
+                fontWeight={b.r < 38 ? 700 : undefined}
                 fill={style.text}
                 style={{ fontFamily: "var(--font-mono)" }}
               >
-                {formatShare(b.share)}
+                {b.r >= 38
+                  ? `#${b.rank ?? idx + 1} ${formatShare(b.share)}`
+                  : `#${b.rank ?? idx + 1}`}
               </text>
               <text
                 x={b.x}
@@ -689,17 +757,29 @@ export default function BubbleMap({
 
       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-[var(--muted)]">
         {(["minter", "contract", "pair", "burn", "holder"] as Kind[]).map(
-          (k) => (
-            <span key={k} className="inline-flex items-start gap-1.5">
-              <LegendSwatch kind={k} />
-              <span className="font-mono leading-tight">
-                {KIND_STYLE[k].label || "holder"}
-                <span className="block text-[var(--muted)]">
-                  {KIND_STYLE[k].blurb}
+          (k) => {
+            const absent = k !== "holder" && absentSpecial.includes(k);
+            return (
+              <span
+                key={k}
+                className="inline-flex items-start gap-1.5"
+                style={absent ? { opacity: 0.45 } : undefined}
+              >
+                <LegendSwatch kind={k} />
+                <span className="font-mono leading-tight">
+                  {KIND_STYLE[k].label}
+                  {absent && (
+                    <span className="block text-[var(--muted)]">
+                      not in this window
+                    </span>
+                  )}
+                  <span className="block text-[var(--muted)]">
+                    {KIND_STYLE[k].blurb}
+                  </span>
                 </span>
               </span>
-            </span>
-          ),
+            );
+          },
         )}
       </div>
 
@@ -733,6 +813,14 @@ export default function BubbleMap({
             {selectedEntry.address}
           </p>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
+                Rank in window
+              </p>
+              <p className="mt-0.5 font-mono text-sm text-[var(--ink)]">
+                #{selectedBubble?.rank ?? "?"}
+              </p>
+            </div>
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
                 Share of supply

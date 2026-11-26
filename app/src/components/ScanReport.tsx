@@ -216,7 +216,7 @@ export default function ScanReport({
               <p className="mt-2 font-mono text-xs break-all text-bone-dim">
                 {result.address}
               </p>
-              <p className="mt-5 max-w-[65ch] leading-relaxed text-bone">
+              <p className="mt-5 max-w-[65ch] leading-relaxed text-bone break-words">
                 {explanation ??
                   "This address holds no contract code. It is an externally owned account, a wallet, so there is no token to score, no source to verify, and no owner to check. A wallet cannot be haunted, and it cannot rug anyone. The score is 0 because there is nothing to score, not because the wallet is safe."}
               </p>
@@ -261,7 +261,7 @@ export default function ScanReport({
           </p>
           {cleanVerdict ? (
             <>
-              <p className="mt-5 max-w-[65ch] leading-relaxed text-bone">
+              <p className="mt-5 max-w-[65ch] leading-relaxed text-bone break-words">
                 {cleanVerdict}
               </p>
               {explanationLocal && (
@@ -276,7 +276,7 @@ export default function ScanReport({
             </>
           ) : (
             <>
-              <p className="mt-5 max-w-[65ch] leading-relaxed text-bone">
+              <p className="mt-5 max-w-[65ch] leading-relaxed text-bone break-words">
                 The ghost&apos;s verdict could not be written this time. The
                 findings below still stand on their own.
               </p>

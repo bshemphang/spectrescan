@@ -7,7 +7,13 @@
 // share is 0.
 
 import { describe, expect, it } from "vitest";
-import { ghostStops, pack, visibleEdges } from "../src/components/BubbleMap";
+import {
+  absentSpecialKinds,
+  ghostStops,
+  KIND_STYLE,
+  pack,
+  visibleEdges,
+} from "../src/components/BubbleMap";
 
 const A = "0x1111111111111111111111111111111111111111";
 const B = "0x2222222222222222222222222222222222222222";
@@ -130,6 +136,75 @@ describe("visibleEdges", () => {
       { from: A.toUpperCase(), to: B.toLowerCase(), value: "7" },
     ]);
     expect(edges).toHaveLength(1);
+  });
+});
+
+describe("pack ranks", () => {
+  it("assigns rank 1 to the biggest mover and 1..N in order", () => {
+    const bubbles = pack(
+      [
+        { address: A, share: 0, netBalance: "100", kind: "holder" },
+        { address: B, share: 0, netBalance: "300", kind: "holder" },
+        { address: C, share: 0, netBalance: "200", kind: "holder" },
+      ],
+      600,
+      380,
+    );
+    const rankOf = new Map(bubbles.map((b) => [b.address, b.rank]));
+    expect(rankOf.get(B)).toBe(1);
+    expect(rankOf.get(C)).toBe(2);
+    expect(rankOf.get(A)).toBe(3);
+  });
+
+  it("gives a single holder rank 1", () => {
+    const [b] = pack(
+      [{ address: A, share: null, netBalance: "100", kind: "holder" }],
+      600,
+      380,
+    );
+    expect(b.rank).toBe(1);
+  });
+});
+
+describe("category styles", () => {
+  it("burn and holder fills differ, and holder is blue not grey", () => {
+    expect(KIND_STYLE.burn.fill).not.toBe(KIND_STYLE.holder.fill);
+    expect(KIND_STYLE.holder.fill).toBe("#3b82f6");
+    expect(KIND_STYLE.burn.fill).toBe("#0c0a12");
+    expect(KIND_STYLE.burn.stroke).toBe("#f97316");
+  });
+
+  it("every kind has a non-empty label so no bubble is a mystery", () => {
+    for (const k of ["minter", "contract", "pair", "burn", "holder"] as const) {
+      expect(KIND_STYLE[k].label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("burn carries ember dots and a badge", () => {
+    expect(KIND_STYLE.burn.dots).toBe(true);
+    expect(KIND_STYLE.burn.badge).toBe("B");
+    expect(KIND_STYLE.holder.dots).toBe(false);
+  });
+});
+
+describe("absentSpecialKinds", () => {
+  it("lists missing special kinds and never lists holder", () => {
+    expect(absentSpecialKinds(["holder"])).toEqual([
+      "minter",
+      "contract",
+      "pair",
+      "burn",
+    ]);
+    expect(absentSpecialKinds(["holder", "minter", "burn"])).toEqual([
+      "contract",
+      "pair",
+    ]);
+  });
+
+  it("returns empty when all four special kinds are present", () => {
+    expect(
+      absentSpecialKinds(["minter", "contract", "pair", "burn", "holder"]),
+    ).toEqual([]);
   });
 });
 
