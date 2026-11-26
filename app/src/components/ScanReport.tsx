@@ -221,7 +221,7 @@ export default function ScanReport({
         type="button"
         onClick={retryVerdict}
         disabled={retrying}
-        className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/15 px-4 text-sm font-medium text-bone transition-[background-color,border-color] hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral disabled:opacity-60"
+        className="btn-soft inline-flex h-10 items-center gap-2 rounded-lg border border-white/15 px-4 text-sm font-medium text-bone hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral disabled:opacity-60"
       >
         <RotateCcw size={15} strokeWidth={1.5} aria-hidden />
         {retrying ? "Retrying the verdict…" : "Retry verdict"}
@@ -240,7 +240,7 @@ export default function ScanReport({
         type="button"
         onClick={copyLink}
         aria-label="Copy link to this scan result"
-        className="inline-flex h-11 items-center gap-2 rounded-lg bg-spectral px-5 text-sm font-semibold text-white transition-[background-color,border-color,box-shadow,transform] hover:bg-[#8b5cf6] hover:shadow-[0_0_24px_rgba(139,92,246,0.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral active:scale-[0.97]"
+        className="btn-boo inline-flex h-11 items-center gap-2 rounded-lg bg-spectral px-5 text-sm font-semibold text-white hover:bg-[#8b5cf6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
       >
         {copied ? (
           <Check size={16} strokeWidth={1.5} aria-hidden />
@@ -259,7 +259,7 @@ export default function ScanReport({
               ? "Remove this token from your watchlist"
               : "Add this token to your watchlist"
           }
-          className={`inline-flex h-11 items-center gap-2 rounded-lg border px-5 text-sm font-medium transition-[background-color,border-color] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral ${
+          className={`btn-soft inline-flex h-11 items-center gap-2 rounded-lg border px-5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral ${
             watched
               ? "border-ember/60 bg-ember/10 text-ember"
               : "border-white/15 text-bone hover:border-white/30 hover:bg-white/[0.04]"
@@ -279,7 +279,7 @@ export default function ScanReport({
           type="button"
           onClick={exportReport}
           aria-label="Download this scan as a markdown report"
-          className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/15 px-5 text-sm font-medium text-bone transition-[background-color,border-color] hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+          className="btn-soft inline-flex h-11 items-center gap-2 rounded-lg border border-white/15 px-5 text-sm font-medium text-bone hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
         >
           <Download size={16} strokeWidth={1.5} aria-hidden />
           Download report
@@ -287,7 +287,7 @@ export default function ScanReport({
       )}
       <Link
         href="/"
-        className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/15 px-5 text-sm font-medium text-bone transition-[background-color,border-color] hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+        className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/15 px-5 text-sm font-medium text-bone transition-transform hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral active:scale-[0.97]"
       >
         <RotateCcw size={16} strokeWidth={1.5} aria-hidden />
         Scan another address
@@ -606,7 +606,7 @@ export default function ScanReport({
           <button
             type="button"
             onClick={copyLink}
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-spectral px-4 text-sm font-semibold text-white transition-[background-color,box-shadow] hover:bg-[#8b5cf6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+            className="btn-boo inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-spectral px-4 text-sm font-semibold text-white hover:bg-[#8b5cf6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
           >
             <Link2 size={15} strokeWidth={1.5} aria-hidden />
             {copied ? "Link copied" : "Copy the link"}

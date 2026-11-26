@@ -175,7 +175,7 @@ export default function BulkPage() {
           <button
             type="submit"
             disabled={running}
-            className="mt-3 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-spectral px-6 text-sm font-semibold text-white transition-[background-color,border-color,box-shadow,transform] hover:bg-[#8b5cf6] hover:shadow-[0_0_28px_rgba(139,92,246,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral active:scale-[0.97] disabled:opacity-60"
+            className={`btn-boo mt-3 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-spectral px-6 text-sm font-semibold text-white hover:bg-[#8b5cf6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral disabled:opacity-60 ${running ? "btn-loading" : ""}`}
           >
             <Layers size={16} strokeWidth={1.5} aria-hidden />
             {running

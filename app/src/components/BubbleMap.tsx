@@ -551,7 +551,7 @@ export default function BubbleMap({
             setSelected(null);
           }}
           aria-pressed={filter === null}
-          className={`rounded-full border px-3 py-1.5 font-mono text-xs transition-[border-color,color,box-shadow] ${
+          className={`btn-soft rounded-full border px-3 py-1.5 font-mono text-xs ${
             filter === null
               ? "border-spectral text-ember shadow-[0_0_16px_rgba(240,163,94,0.35)]"
               : "border-white/15 text-bone-dim hover:border-white/30 hover:text-bone"
@@ -575,7 +575,7 @@ export default function BubbleMap({
                     ? `${KIND_STYLE[k].label} did not move in this window`
                     : `Show only ${KIND_STYLE[k].label}`
                 }
-                className={`rounded-full border px-3 py-1.5 font-mono text-xs transition-[border-color,color,box-shadow] disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`btn-soft rounded-full border px-3 py-1.5 font-mono text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
                   active
                     ? "border-spectral text-ember shadow-[0_0_16px_rgba(240,163,94,0.35)]"
                     : "border-white/15 text-bone-dim hover:border-white/30 hover:text-bone"

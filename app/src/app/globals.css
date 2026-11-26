@@ -395,3 +395,128 @@ summary,
     animation: none;
   }
 }
+
+/* Button VFX site-wide: every button answers a press, primary buttons
+   lift and glow violet, loading buttons show a bobbing ghost, disabled
+   buttons look dead. The scan submit button already had glow and press
+   scale; this makes that the shared pattern instead of a one-off, so
+   copy link, watch, download report, bulk, filter chips, nav, and menu
+   buttons all behave the same way. */
+button,
+[role="button"] {
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    opacity 200ms ease;
+}
+
+/* Press: a small squish on every button that can act. The ghost
+   back-to-top is excluded: it positions itself with translateY, and a
+   press scale would fight that transform. */
+button:active:not(:disabled):not(.ghost-to-top),
+[role="button"]:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Disabled is dead: no lift, no glow, no pointer. The !important on
+   the hover rules is deliberate: Tailwind hover utilities outrank this
+   element rule, and a disabled button must never glow. */
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+button:disabled:hover,
+button:disabled:active {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Primary buttons: hover lifts a pixel and glows violet, like the
+   phantom. Apply with .btn-boo next to the layout classes. */
+.btn-boo:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 28px rgba(139, 92, 246, 0.45);
+}
+
+.btn-boo:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Secondary buttons: a gentler lift on hover, same press. */
+.btn-soft:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+/* Loading buttons: a tiny sheet ghost bobs inside the button next to
+   the label, so a wait is honest and on-theme instead of a dead
+   button. The ghost is the same friendly shape as the cursor. */
+.btn-loading::before {
+  content: "";
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C7.03 2 3 6.03 3 11v9.5l3-2.25 3 2.25 3-2.25 3 2.25 3-2.25 3 2.25V11c0-4.97-4.03-9-9-9z' fill='%23f2f0ea'/%3E%3Ccircle cx='9' cy='10' r='1.7' fill='%230c0a12'/%3E%3Ccircle cx='15' cy='10' r='1.7' fill='%230c0a12'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+  animation: btn-ghost-bob 1s ease-in-out infinite;
+}
+
+@keyframes btn-ghost-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* Mobile tab bar spacing: the fixed bottom bar is 60px tall plus the
+   safe area, so the page gets that much bottom padding on phones and
+   the footer never hides behind it. The ghost back-to-top button is
+   raised above the bar on phones for the same reason. */
+@media (max-width: 639px) {
+  body {
+    /* 60px bar plus its 1px top border, plus the safe area. */
+    padding-bottom: calc(3.75rem + 1px + env(safe-area-inset-bottom));
+  }
+  .ghost-to-top {
+    bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* More sheet: slides up from the bottom in 250ms. */
+.sheet-in {
+  animation: sheet-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  [role="button"],
+  .btn-boo,
+  .btn-soft {
+    transition: none;
+  }
+  button:active,
+  [role="button"]:active,
+  .btn-boo:hover,
+  .btn-soft:hover {
+    transform: none;
+  }
+  .btn-loading::before,
+  .sheet-in {
+    animation: none;
+  }
+}

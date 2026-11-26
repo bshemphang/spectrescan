@@ -80,6 +80,7 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -90,6 +91,9 @@ export default function Home() {
       return;
     }
     setError(null);
+    // Honest loading state: the ghost bobs in the button while the
+    // dossier loads, so the button never looks dead mid-navigation.
+    setScanning(true);
     router.push(`/scan/${value}`);
   }
 
@@ -149,10 +153,11 @@ export default function Home() {
                   />
                   <button
                     type="submit"
-                    className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-spectral px-6 text-sm font-semibold text-white transition-[background-color,border-color,box-shadow,transform] hover:bg-[#8b5cf6] hover:shadow-[0_0_28px_rgba(139,92,246,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral active:scale-[0.97]"
+                    disabled={scanning}
+                    className={`btn-boo inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-spectral px-6 text-sm font-semibold text-white hover:bg-[#8b5cf6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral ${scanning ? "btn-loading" : ""}`}
                   >
                     <Search size={16} strokeWidth={1.5} aria-hidden />
-                    Scan it
+                    {scanning ? "Scanning…" : "Scan it"}
                   </button>
                 </div>
                 {error && (
