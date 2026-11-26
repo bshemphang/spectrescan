@@ -19,7 +19,7 @@ answer in plain English: is this contract haunted?"
 "SpectreScan is a ghost-hunter for smart contracts. Paste any BNB Chain
 contract address. It reads the verified source, checks the owner, the
 liquidity lock and the holders, and gives you a haunting report — with the
-exact lines cited. It's built the Kiro way: specs first, a deterministic
+evidence cited for each finding. It's built the Kiro way: specs first, a deterministic
 rules engine, a custom MCP server, and property-based tests proving the
 score can't lie."
 
@@ -41,7 +41,7 @@ there is nowhere to sell. One address holds everything."
 "And here's CAKE, PancakeSwap's token. Forty-six: Mildly haunted. It has
 a mint function, but minting is governed by a verified contract whose rules
 are public code — so it scores lower. The ghost's verdict explains all of
-this in plain English, with the lines cited."
+this in plain English, with the evidence cited for each finding."
 
 ## 2:10–2:30 — Close
 

@@ -4,7 +4,7 @@
 > requirements (REQ-*) and design sections it implements. Check off as done.
 
 ## Phase 1 — Foundation
-- [x] 1. Scaffold Next.js 15 app (TypeScript, App Router, Tailwind) in `app/`.
+- [x] 1. Scaffold Next.js 16 app (TypeScript, App Router, Tailwind) in `app/`.
 - [x] 2. Install Kiro CLI 3.1.0 (`curl -fsSL https://cli.kiro.dev/install | bash`);
       verify `kiro-cli --version`. NOTE: interactive agent use needs a user
       sign-in (Google/GitHub/AWS Builder ID) — that step is the entrant's,

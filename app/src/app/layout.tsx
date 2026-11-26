@@ -5,7 +5,7 @@ import "./globals.css";
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
-  weight: ["600", "700"],
+  weight: ["500", "600", "700"],
 });
 
 const inter = Inter({
@@ -36,7 +36,20 @@ export default function RootLayout(props: LayoutProps<"/">) {
       lang="en"
       className={`${fraunces.variable} ${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="haunt-bg min-h-full">{props.children}</body>
+      <body className="haunt-bg min-h-full">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-spectral focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+        >
+          Skip to content
+        </a>
+        <div aria-hidden className="atmosphere">
+          <div className="atmosphere-grid" />
+          <div className="atmosphere-glow" />
+          <div className="atmosphere-grain" />
+        </div>
+        {props.children}
+      </body>
     </html>
   );
 }

@@ -17,7 +17,33 @@ import type { ScanResult } from "@/lib/engine/types";
 const cache = new Map<string, { at: number; result: ScanResult }>();
 const CACHE_MS = 5 * 60 * 1000;
 
+// Minimal per-instance rate limit: 60 scans per rolling minute. This is a
+// public, unauthenticated tool, so the limit only slows casual abuse; it
+// is not a security boundary. On multi-instance hosts it applies per
+// instance. Fail-open by design: the limiter is three lines with no
+// external dependency, so there is nothing to fail.
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 60;
+let rateWindowStart = 0;
+let rateCount = 0;
+
+function rateLimited(): boolean {
+  const now = Date.now();
+  if (now - rateWindowStart >= RATE_WINDOW_MS) {
+    rateWindowStart = now;
+    rateCount = 0;
+  }
+  rateCount += 1;
+  return rateCount > RATE_MAX;
+}
+
 export async function POST(request: Request) {
+  if (rateLimited()) {
+    return Response.json(
+      { error: "Too many scans. Wait a minute and try again." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
   let body: unknown;
   try {
     body = await request.json();

@@ -154,15 +154,20 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
   // R9 — pair health.
   findings.push(...pairHealthFindings(pairs));
 
-  // Combination rule: the deployer minted the whole supply AND there is no
-  // trading pair — no exit, one holder with everything. Upgrade no-pair.
-  const hasDeployerMint = findings.some((f) => f.id === "deployer-mint");
+  // Combination rule: the deployer minted the whole (or almost the whole)
+  // supply AND there is no trading pair — no exit, one holder with
+  // everything. Upgrade no-pair.
+  const deployerMint = findings.find((f) => f.id === "deployer-mint");
   const noPair = findings.find((f) => f.id === "no-pair");
-  if (hasDeployerMint && noPair) {
+  if (deployerMint && noPair) {
+    const almost = deployerMint.title.startsWith("Almost");
     setSeverity(noPair, "high");
-    noPair.title = "No trading pair — and the deployer holds everything";
-    noPair.detail =
-      "No DEX pair exists for this token, so there is nowhere to sell it, and the whole supply was minted to the deployer's wallet at launch. Even if a pair appears later, one address holds the entire supply.";
+    noPair.title = almost
+      ? "No trading pair — and the deployer holds almost everything"
+      : "No trading pair — and the deployer holds everything";
+    noPair.detail = almost
+      ? "No DEX pair exists for this token, so there is nowhere to sell it, and almost the whole supply was minted to the deployer's wallet at launch. Even if a pair appears later, one address holds nearly the entire supply."
+      : "No DEX pair exists for this token, so there is nowhere to sell it, and the whole supply was minted to the deployer's wallet at launch. Even if a pair appears later, one address holds the entire supply.";
   }
 
   const score = scoreFindings(findings);

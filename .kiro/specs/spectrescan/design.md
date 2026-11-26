@@ -6,7 +6,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ Next.js 15 (App Router, TypeScript, Tailwind) — app/           │
+│ Next.js 16 (App Router, TypeScript, Tailwind) — app/           │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐    │
 │  │  UI (haunted │   │ /api/scan    │   │ LLM explainer    │    │
 │  │  theme)      │──▶│  route       │──▶│ (Pollinations,   │    │
@@ -47,8 +47,8 @@ the Frankenstein point: one deterministic brain, two bodies.
      `owner()` (if present), pair LP `balanceOf(burn addresses)` (R5–R7).
 3. Run source checks (R2–R4) against the verified source text, recording
    file + line numbers for every hit.
-4. Run holder-concentration scan (R8): bounded `eth_getLogs` Transfer scan
-   (max ~20k blocks, chunked, 15s budget); on failure → "unknown".
+4. Run the pair-share proxy (R8): share of total supply sitting in the
+   main DEX pair (see below); on missing pair data → "unknown".
 5. Score findings deterministically (REQ-4).
 6. LLM explainer (REQ-5): one prompt with the findings JSON + source excerpts;
    response is stored verbatim and displayed as "the ghost's verdict".
@@ -103,9 +103,10 @@ means different things under different ownership:
   appears in a comment or a cap equal to the initial supply.
 - **Owner is a contract:** LOW when that contract is verified on Sourcify
   (its controller is transparent), HIGH when it is not.
-- **Combination rule:** deployer-minted supply AND no trading pair upgrades
-  the no-pair finding to HIGH — no exit plus one holder with everything.
-  This is a distinct combined fact, not double-counting.
+- **Combination rule:** deployer-minted supply (whole or almost the whole
+  supply) AND no trading pair upgrades the no-pair finding to HIGH — no
+  exit plus one holder with everything. This is a distinct combined fact,
+  not double-counting.
 - **Deployer-mint pattern (R2):** the constructor or an `initialize()`
   function assigns the entire supply to `msg.sender`'s balance (or
   `_mint(msg.sender, <total>)`). The supply variable may be declared at
@@ -118,12 +119,13 @@ means different things under different ownership:
   be checked from public data, so the finding reports the lock status as
   unknown (medium) and warns that providers can withdraw at any time —
   never as a clean bill of health.
-- **Holder concentration (R8):** public BSC RPCs refuse `eth_getLogs`
+- **Pair-share proxy (R8):** public BSC RPCs refuse `eth_getLogs`
   (verified 2026-11-08: dataseed1/2 return -32005 "limit exceeded" even for
-  100-block ranges; publicnode rate-limits). The log scan is attempted
-  first; when it fails, the check falls back to a pair-share proxy — the
-  share of total supply sitting in the main pair. Pair share < 10% →
-  medium ("most supply sits outside the pool").
+  100-block ranges; publicnode rate-limits), so a real top-holder scan is
+  not possible from public data. The check falls back to a pair-share proxy
+  — the share of total supply sitting in the main pair. Pair share < 10% →
+  medium ("most supply sits outside the pool"). The finding says it is a
+  proxy, never a holder scan.
 
 ### Source-pattern checks (R2–R4)
 
@@ -153,13 +155,17 @@ If the source is unavailable, R2–R4 report "unknown" instead of guessing.
   `balanceOf(pair, 0x000…0)` via eth_call; share = burned / totalSupply(pair).
 - share ≥ 90% → info (good); 50–90% → low; < 50% → medium; no pair → unknown.
 
-### Top-holder concentration (R8)
+### Pair-share proxy (R8)
 
-- Bounded scan of Transfer logs from the token contract over the last
-  ~20,000 blocks (chunked 2,000-block ranges), tracking net balances of
-  recipients; exclude the pair address and burn addresses.
-- top-10 share ≥ 90% → high; 50–90% → medium; 30–50% → low; < 30% → info.
-- Any RPC error or timeout → "unknown" finding (weight 0, clearly labelled).
+- The share of total supply sitting in the main DEX pair, from Dexscreener
+  pair data and `totalSupply()` via eth_call. This is a proxy for holder
+  concentration, not a holder scan: public RPCs refuse `eth_getLogs`, so
+  real top-holder data is unavailable.
+- Pair share < 10% → medium ("most supply sits outside the pool");
+  ≥ 10% → info, and the finding says the reading is inconclusive — a
+  pool share in that range says little about who holds the rest.
+  The finding text says it is a proxy.
+- No pair at all → the no-pair finding (R9), not this check.
 
 ## LLM explainer
 
@@ -168,8 +174,9 @@ If the source is unavailable, R2–R4 report "unknown" instead of guessing.
   ("be factual, be brief").
 - Prompt includes: the findings JSON (severity, title, detail, evidence),
   the score and band, and the hard instruction block from steering
-  (`never hallucinate a vulnerability, always cite line numbers, never call
-  anything "audited"`).
+  (`never hallucinate a vulnerability, cite file and line only for
+  source-based findings and state the measured on-chain value for
+  on-chain findings, never call anything "audited"`).
 - If the LLM call fails, the UI falls back to the raw findings list with a
   note — the scan result never depends on the LLM.
 

@@ -108,12 +108,30 @@ describe("scoreFindings", () => {
 describe("bandFor", () => {
   it("maps the documented thresholds", () => {
     expect(bandFor(0)).toBe("Resting in peace");
-    expect(bandFor(24)).toBe("Resting in peace");
-    expect(bandFor(25)).toBe("Mildly haunted");
+    expect(bandFor(12)).toBe("Resting in peace");
+    expect(bandFor(13)).toBe("Mildly haunted");
     expect(bandFor(49)).toBe("Mildly haunted");
     expect(bandFor(50)).toBe("Haunted");
     expect(bandFor(74)).toBe("Haunted");
     expect(bandFor(75)).toBe("Possessed — do not touch");
     expect(bandFor(100)).toBe("Possessed — do not touch");
+  });
+
+  it("two medium findings land at least in Mildly haunted", () => {
+    // One medium is 12, the edge of Resting. Two mediums (24) must read
+    // as more than one quiet issue, never Resting in peace.
+    const medium = (): Finding => ({
+      id: "x",
+      check: "R2",
+      severity: "medium",
+      title: "x",
+      detail: "x",
+      evidence: [],
+      weight: weightFor("medium"),
+    });
+    expect(scoreFindings([medium(), medium()])).toBe(24);
+    expect(bandFor(scoreFindings([medium(), medium()]))).toBe(
+      "Mildly haunted",
+    );
   });
 });

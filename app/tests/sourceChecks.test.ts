@@ -241,4 +241,55 @@ describe("deployerMintCheck", () => {
     );
     expect(deployerMintCheck([{ path: "Test.sol", content: src }])).toBeNull();
   });
+
+  it("flags a 99% fraction mint as a majority mint", () => {
+    const src = snippet(
+      [
+        "    uint256 public totalSupply = 1000000 * 10**18;",
+        "    constructor() { _mint(msg.sender, totalSupply * 99 / 100); _mint(feeWallet, totalSupply / 100); }",
+      ].join("\n"),
+    );
+    const hit = deployerMintCheck([{ path: "Test.sol", content: src }]);
+    expect(hit).not.toBeNull();
+    expect(hit!.title).toMatch(/Almost the entire supply/);
+    expect(hit!.severity).toBe("high");
+  });
+
+  it("flags a supply-minus-fee mint as a majority mint", () => {
+    const src = snippet(
+      [
+        "    uint256 public totalSupply = 1000000 * 10**18;",
+        "    constructor() { _mint(msg.sender, totalSupply - feeAmount); }",
+      ].join("\n"),
+    );
+    const hit = deployerMintCheck([{ path: "Test.sol", content: src }]);
+    expect(hit).not.toBeNull();
+    expect(hit!.title).toMatch(/Almost the entire supply/);
+  });
+
+  it("flags a 99/1 two-literal split as a majority mint", () => {
+    const src = snippet(
+      "    constructor() { _mint(msg.sender, 990000 * 10**18); _mint(feeWallet, 10000 * 10**18); }",
+    );
+    const hit = deployerMintCheck([{ path: "Test.sol", content: src }]);
+    expect(hit).not.toBeNull();
+    expect(hit!.title).toMatch(/Almost the entire supply/);
+  });
+
+  it("does not flag a 50% fraction mint", () => {
+    const src = snippet(
+      [
+        "    uint256 public totalSupply = 1000000 * 10**18;",
+        "    constructor() { _mint(msg.sender, totalSupply * 50 / 100); _mint(teamWallet, totalSupply / 2); }",
+      ].join("\n"),
+    );
+    expect(deployerMintCheck([{ path: "Test.sol", content: src }])).toBeNull();
+  });
+
+  it("does not flag an 80/20 two-literal split", () => {
+    const src = snippet(
+      "    constructor() { _mint(msg.sender, 800000 * 10**18); _mint(teamWallet, 200000 * 10**18); }",
+    );
+    expect(deployerMintCheck([{ path: "Test.sol", content: src }])).toBeNull();
+  });
 });

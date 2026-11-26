@@ -1,7 +1,11 @@
 // SpectreScan — ghost meter: an SVG arc dial for the 0–100 risk score.
 // Colour follows the band: green (resting) → violet (mild) → amber
-// (haunted) → red (possessed).
+// (haunted) → red (possessed). The arc draws itself on load; under
+// prefers-reduced-motion it renders in its final state with no animation.
 
+"use client";
+
+import { useEffect, useState } from "react";
 import type { RiskBand } from "@/lib/engine/types";
 
 const BAND_COLOR: Record<RiskBand, string> = {
@@ -34,6 +38,22 @@ export default function GhostMeter({
       ? ""
       : `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`;
 
+  // Draw-in on load: dashoffset goes from 100 (hidden) to 100 - frac*100.
+  // Deferred to the next frame so the initial paint shows the empty arc
+  // and the transition has somewhere to go.
+  const [shown, setShown] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      setReduceMotion(
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      );
+      setShown(true);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const offset = shown ? 100 - frac * 100 : 100;
+
   return (
     <div className="flex flex-col items-center">
       <svg viewBox="0 0 200 115" className="w-56 sm:w-64" role="img"
@@ -54,6 +74,17 @@ export default function GhostMeter({
             stroke={color}
             strokeWidth="12"
             strokeLinecap="round"
+            pathLength={100}
+            strokeDasharray="100"
+            strokeDashoffset={offset}
+            style={
+              reduceMotion
+                ? undefined
+                : {
+                    transition:
+                      "stroke-dashoffset 900ms cubic-bezier(0.22, 1, 0.36, 1)",
+                  }
+            }
           />
         )}
         <text
@@ -62,8 +93,9 @@ export default function GhostMeter({
           textAnchor="middle"
           fill="#f2f0ea"
           fontSize="34"
-          fontWeight="700"
+          fontWeight="600"
           fontFamily="var(--font-fraunces), Georgia, serif"
+          className="tabular-nums"
         >
           {score}
         </text>
@@ -72,10 +104,10 @@ export default function GhostMeter({
           y="108"
           textAnchor="middle"
           fill="#b8b3c4"
-          fontSize="10"
+          fontSize="12"
           fontFamily="var(--font-inter), system-ui, sans-serif"
         >
-          ECTOPLASM LEVEL / 100
+          Ectoplasm level / 100
         </text>
       </svg>
       <p

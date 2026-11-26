@@ -10,6 +10,11 @@
 // "mildly scary". Medium and low stay small so a clean token that
 // accumulates a few mediums (e.g. CAKE: mintable + V3-unverified +
 // holders-outside-pool) still reads Mildly haunted, not Haunted.
+//
+// The bands are drawn so "Resting in peace" means at most one
+// medium-strength signal and nothing else: two medium findings (24)
+// already read Mildly haunted, because two real risk signals are never
+// "resting". A single medium alone (12) is the edge of Resting.
 
 import type { Finding, RiskBand, Severity } from "./types";
 
@@ -31,7 +36,7 @@ export function scoreFindings(findings: Finding[]): number {
 }
 
 export function bandFor(score: number): RiskBand {
-  if (score <= 24) return "Resting in peace";
+  if (score <= 12) return "Resting in peace";
   if (score <= 49) return "Mildly haunted";
   if (score <= 74) return "Haunted";
   return "Possessed — do not touch";

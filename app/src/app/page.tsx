@@ -1,242 +1,202 @@
-// SpectreScan — home page (client component).
-// One address input, one-click sample scans, and the haunting report:
-// ghost meter, LLM verdict, findings cards, disclaimer.
+// SpectreScan — home page: asymmetric hero, GhostMeter preview on the
+// right, sample scans as compact warning cards, a How-it-works toggle,
+// and this browser's real recent scans. Results live on /scan/[address];
+// the home page only takes the address and navigates there.
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  CheckCircle2,
   Ghost,
-  Loader2,
-  RotateCcw,
-  ScanSearch,
-  ShieldQuestion,
-  TriangleAlert,
+  OctagonAlert,
+  Search,
+  ShieldAlert,
 } from "lucide-react";
 import GhostMeter from "@/components/GhostMeter";
-import FindingCard from "@/components/FindingCard";
+import RecentScans from "@/components/RecentScans";
+import SiteFooter from "@/components/SiteFooter";
+import SiteHeader from "@/components/SiteHeader";
 import { SAMPLE_CONTRACTS } from "@/lib/engine/fixtures";
-import type { ScanResult } from "@/lib/engine/types";
-import { isValidAddress } from "@/lib/engine/scan";
 
-type Status = "idle" | "scanning" | "done" | "error";
-
-const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"] as const;
+// Sample cards get an icon by contract, as decided in the design review:
+// SELO is the outright case (red), AGIO the warning case (amber), CAKE
+// the clean comparison (green).
+const SAMPLE_ICON: Record<
+  string,
+  { Icon: typeof OctagonAlert; color: string }
+> = {
+  SELO: { Icon: OctagonAlert, color: "#f26d6d" },
+  AGIO: { Icon: ShieldAlert, color: "#f0a35e" },
+  CAKE: { Icon: CheckCircle2, color: "#7fe0b2" },
+};
 
 export default function Home() {
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [address, setAddress] = useState("");
-  const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ScanResult | null>(null);
-  const [elapsed, setElapsed] = useState<number | null>(null);
 
-  async function runScan(addr: string) {
-    const trimmed = addr.trim();
-    if (!isValidAddress(trimmed)) {
-      setError("That is not a valid contract address. Use 0x followed by 40 hex characters.");
-      setStatus("error");
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const value = address.trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
+      setError("Enter a contract address: 0x followed by 40 hex characters.");
+      inputRef.current?.focus();
       return;
     }
-    setStatus("scanning");
     setError(null);
-    setResult(null);
-    const started = Date.now();
-    try {
-      const res = await fetch("/api/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: trimmed }),
-      });
-      const json = (await res.json()) as ScanResult & { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Scan failed.");
-      setResult(json);
-      setElapsed((Date.now() - started) / 1000);
-      setStatus("done");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Scan failed. Try again.");
-      setStatus("error");
-    }
+    router.push(`/scan/${value}`);
   }
 
-  const sortedFindings = result
-    ? [...result.findings].sort(
-        (a, b) =>
-          SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity),
-      )
-    : [];
+  const selo = SAMPLE_CONTRACTS[0];
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
-      {/* Header */}
-      <header className="flex items-center justify-between pt-6">
-        <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-spectral/15 text-spectral">
-            <Ghost size={20} aria-hidden />
-          </span>
-          <span className="font-display text-xl font-bold tracking-tight">
-            SpectreScan
-          </span>
-        </div>
-        <span className="rounded-full border border-haunt-border px-3 py-1 text-xs font-medium text-bone-dim">
-          BSC · Chain 56
-        </span>
-      </header>
-
-      {/* Hero */}
-      <section className="mt-10 text-center sm:mt-14">
-        <h1 className="font-display text-4xl leading-tight font-bold sm:text-5xl">
-          Is this contract <span className="text-spectral">haunted?</span>
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-bone-dim sm:text-lg">
-          Paste any BNB Chain contract address. SpectreScan reads its verified
-          source and on-chain footprint, then tells you in plain English
-          whether it is safe to touch — with the exact lines cited.
-        </p>
-      </section>
-
-      {/* Scan form */}
-      <section className="mt-8">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void runScan(address);
-          }}
-          className="flex flex-col gap-3 sm:flex-row"
-        >
-          <label htmlFor="address" className="sr-only">
-            Contract address
-          </label>
-          <input
-            id="address"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="0x… contract address"
-            spellCheck={false}
-            autoComplete="off"
-            className="h-12 flex-1 rounded-lg border border-haunt-border bg-haunt-panel px-4 font-mono text-sm text-bone placeholder:text-bone-dim/60 focus:border-spectral focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={status === "scanning"}
-            className="flex h-12 items-center justify-center gap-2 rounded-lg bg-spectral px-6 text-sm font-semibold text-haunt-bg transition hover:bg-spectral-deep hover:text-bone disabled:opacity-60"
-          >
-            {status === "scanning" ? (
-              <>
-                <Loader2 size={17} className="animate-spin" aria-hidden />
-                Summoning the ghost…
-              </>
-            ) : (
-              <>
-                <ScanSearch size={17} aria-hidden />
-                Scan contract
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Sample contracts */}
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-xs text-bone-dim">Try one:</span>
-          {SAMPLE_CONTRACTS.map((s) => (
-            <button
-              key={s.address}
-              type="button"
-              disabled={status === "scanning"}
-              onClick={() => {
-                setAddress(s.address);
-                void runScan(s.address);
-              }}
-              className="rounded-full border border-haunt-border bg-haunt-panel px-3 py-1.5 text-xs font-medium text-bone transition hover:border-spectral hover:text-spectral disabled:opacity-60"
+    <div className="relative mx-auto w-full max-w-6xl px-5 sm:px-8">
+      <SiteHeader />
+      <main id="main" className="pb-16">
+        <div className="grid items-center gap-10 pt-12 lg:grid-cols-[55%_45%] lg:pt-16">
+          <section aria-labelledby="hero-heading">
+            <h1
+              id="hero-heading"
+              className="font-display text-[2.25rem] leading-[1.05] font-medium text-balance text-bone sm:text-6xl"
             >
-              {s.label} — {s.tagline.split("—")[0].trim()}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Error */}
-      {status === "error" && error && (
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-blood/40 bg-blood/10 p-4">
-          <TriangleAlert size={18} className="mt-0.5 shrink-0 text-blood" aria-hidden />
-          <p className="text-sm text-bone">{error}</p>
-        </div>
-      )}
-
-      {/* Loading note */}
-      {status === "scanning" && (
-        <p className="mt-8 text-center text-sm text-bone-dim">
-          Reading verified source, checking the owner, the liquidity lock and
-          the holders… usually under 30 seconds.
-        </p>
-      )}
-
-      {/* Result */}
-      {status === "done" && result && (
-        <section className="mt-10">
-          <div className="rounded-2xl border border-haunt-border bg-haunt-panel p-5 sm:p-7">
-            <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:justify-between">
-              <GhostMeter score={result.score} band={result.band} />
-              <div className="w-full sm:max-w-sm">
-                <h2 className="font-display text-lg font-semibold">
-                  {result.token.name ?? "Unknown token"}{" "}
-                  {result.token.symbol ? `(${result.token.symbol})` : ""}
-                </h2>
-                <p className="mt-1 font-mono text-xs break-all text-bone-dim">
-                  {result.address}
-                </p>
-                <p className="mt-2 text-xs text-bone-dim">
-                  Source {result.verified ? "verified" : "not verified"} ·{" "}
-                  {result.findings.length} findings
-                  {elapsed !== null ? ` · scanned in ${elapsed.toFixed(1)}s` : ""}
-                </p>
-                {result.explanation ? (
-                  <p className="mt-4 text-sm leading-relaxed text-bone">
-                    {result.explanation}
-                  </p>
-                ) : (
-                  <p className="mt-4 flex items-start gap-2 text-sm leading-relaxed text-bone-dim">
-                    <ShieldQuestion size={16} className="mt-0.5 shrink-0" aria-hidden />
-                    The ghost&apos;s verdict could not be summoned this time —
-                    the findings below still stand on their own.
-                  </p>
-                )}
+              Is this contract <span className="text-spectral">haunted?</span>
+            </h1>
+            <p className="mt-5 max-w-[36rem] text-lg leading-relaxed text-bone-dim">
+              Paste a BNB Chain contract address and find out what is wrong
+              with it, with the evidence cited.
+            </p>
+            <form onSubmit={submit} className="mt-8 max-w-[36rem]" noValidate>
+              <label
+                htmlFor="contract-address"
+                className="mb-2 block text-sm font-medium text-bone"
+              >
+                Contract address
+              </label>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  ref={inputRef}
+                  id="contract-address"
+                  name="contract-address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="0x…"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? "address-error" : undefined}
+                  className="h-12 min-w-0 flex-1 rounded-lg border border-white/15 bg-white/[0.04] px-4 font-mono text-sm text-bone placeholder:text-bone-dim focus:border-spectral focus:outline-2 focus:outline-offset-2 focus:outline-spectral"
+                />
+                <button
+                  type="submit"
+                  className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-spectral px-6 text-sm font-semibold text-white transition-[background-color,border-color,box-shadow,transform] hover:bg-[#8b5cf6] hover:shadow-[0_0_28px_rgba(139,92,246,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral active:scale-[0.97]"
+                >
+                  <Search size={16} strokeWidth={1.5} aria-hidden />
+                  Scan it
+                </button>
               </div>
-            </div>
-          </div>
+              {error && (
+                <p id="address-error" role="alert" className="mt-3 text-sm text-[#f26d6d]">
+                  {error}
+                </p>
+              )}
+            </form>
+            <p className="mt-4 text-xs text-bone-dim">
+              Free, no wallet, no sign-up. Reads the verified source and
+              public on-chain data only.
+            </p>
+          </section>
 
-          <h2 className="mt-8 font-display text-xl font-semibold">
-            What the ghost found
-          </h2>
-          <div className="mt-4 space-y-3">
-            {sortedFindings.map((f) => (
-              <FindingCard key={f.id} finding={f} />
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setResult(null);
-              setAddress("");
-              setStatus("idle");
-            }}
-            className="mt-8 flex items-center gap-2 rounded-lg border border-haunt-border px-4 py-2.5 text-sm font-medium text-bone transition hover:border-spectral hover:text-spectral"
+          <section
+            aria-label="Example scan result"
+            className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8"
           >
-            <RotateCcw size={15} aria-hidden />
-            Scan another contract
-          </button>
-        </section>
-      )}
+            <GhostMeter score={selo.sampleScore} band={selo.sampleBand} />
+            <p className="mt-4 text-center text-sm text-bone-dim">
+              SELO scored 100 — Possessed. The deployer holds the entire
+              supply.
+            </p>
+            <div className="mt-5 text-center">
+              <Link
+                href={`/scan/${selo.address}`}
+                className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/15 px-5 text-sm font-medium text-bone transition-[background-color,border-color] hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+              >
+                <Ghost size={16} strokeWidth={1.5} aria-hidden />
+                See the full SELO scan
+              </Link>
+            </div>
+          </section>
+        </div>
 
-      {/* Footer */}
-      <footer className="mt-14 border-t border-haunt-border pt-6 text-center">
-        <p className="text-xs leading-relaxed text-bone-dim">
-          SpectreScan is not an audit. Never invest more than you can afford
-          to lose. Sources: Sourcify (verified source), public BSC RPCs
-          (on-chain state), Dexscreener (pairs and liquidity). Built for
-          Kiroween 2026, Frankenstein category.
-        </p>
-      </footer>
-    </main>
+        <section aria-labelledby="samples-heading" className="mt-16">
+          <h2
+            id="samples-heading"
+            className="font-display text-xl font-semibold text-bone"
+          >
+            Sample scans
+          </h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {SAMPLE_CONTRACTS.map((sample) => {
+              const { Icon, color } = SAMPLE_ICON[sample.label] ?? {
+                Icon: ShieldAlert,
+                color: "#a78bfa",
+              };
+              return (
+                <Link
+                  key={sample.address}
+                  href={`/scan/${sample.address}`}
+                  className="group rounded-xl border border-white/10 bg-white/[0.03] p-5 transition-[background-color,border-color] hover:border-white/20 hover:bg-white/[0.05] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+                >
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Icon size={16} strokeWidth={1.5} style={{ color }} aria-hidden />
+                    <span className="font-mono text-sm font-semibold text-bone">
+                      {sample.label}
+                    </span>
+                    <span className="ml-auto font-mono text-sm text-bone tabular-nums">
+                      {sample.sampleScore}
+                    </span>
+                    <span className="text-xs whitespace-nowrap" style={{ color }}>
+                      {sample.sampleBand}
+                    </span>
+                  </span>
+                  <span className="mt-3 block text-sm leading-relaxed text-bone-dim">
+                    {sample.tagline}
+                  </span>
+                  <span className="mt-3 block font-mono text-xs break-all text-bone-dim">
+                    {sample.address}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+
+        <details className="group mt-12 rounded-xl border border-white/10 bg-white/[0.03] p-5">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-bone focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral">
+            How the ghost decides
+            <span className="float-right text-bone-dim transition-transform group-open:rotate-180" aria-hidden>
+              ↓
+            </span>
+          </summary>
+          <p className="mt-4 max-w-[65ch] text-sm leading-relaxed text-bone-dim">
+            The score comes from a deterministic rules engine. It reads the
+            verified source and public on-chain data and checks them against
+            a fixed list of rules: deployer mint, hidden taxes, honeypot
+            flags, ownership, liquidity. The same findings always give the
+            same score. A language model then turns those findings into plain
+            English. It never changes the score and never invents a finding.
+            That split, rules decide and words explain, is what makes the
+            verdict checkable: every claim points at its evidence.
+          </p>
+        </details>
+
+        <RecentScans />
+      </main>
+
+      <SiteFooter />
+    </div>
   );
 }

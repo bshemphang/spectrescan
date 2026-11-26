@@ -196,8 +196,24 @@ export function decodeAddress(hex: string | null): string | null {
 }
 
 export function decodeString(hex: string | null): string | null {
-  if (!hex || hex.length < 130) return null;
+  if (!hex || hex === "0x") return null;
   try {
+    // bytes32 short string: exactly 32 bytes, right-padded with zeros.
+    // Older or gas-optimized tokens (e.g. MKR) return name()/symbol()
+    // this way instead of an ABI-encoded string. An ABI-encoded string
+    // is never this short (offset + length + data is at least 96 bytes),
+    // so a 32-byte return can only be bytes32.
+    if (hex.length === 66) {
+      const bytes = hex.slice(2);
+      let out = "";
+      for (let i = 0; i < bytes.length; i += 2) {
+        const code = parseInt(bytes.slice(i, i + 2), 16);
+        if (code === 0) break;
+        out += String.fromCharCode(code);
+      }
+      return out || null;
+    }
+    if (hex.length < 130) return null;
     const len = parseInt(hex.slice(66, 130), 16);
     const bytes = hex.slice(130, 130 + len * 2);
     let out = "";

@@ -10,8 +10,10 @@ Applies to all code, copy, and the LLM explainer prompt. These are hard rules.
   and say why.
 - The LLM explainer prompt MUST include these instructions verbatim:
   "Only describe the findings given below. Do not invent vulnerabilities.
-  Cite the file and line for every claim. Never use the words audited, safe,
-  or secure. End with one sentence telling the reader this is not an audit."
+  For findings with a file and line in their evidence, cite it. For on-chain
+  findings, state the measured on-chain value instead of inventing a line.
+  Never use the words audited, safe, or secure. End with one sentence
+  telling the reader this is not an audit."
 - The UI disclaimer MUST always read: "SpectreScan is not an audit. Never
   invest more than you can afford to lose."
 - Do not claim a feature exists unless it is implemented and tested.

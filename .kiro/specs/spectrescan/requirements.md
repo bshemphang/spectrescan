@@ -12,7 +12,8 @@ It stitches four genuinely incompatible technologies into one app:
 1. A **1990s-style deterministic expert-system rules engine** (hand-written checks,
    no ML) that inspects contract source and on-chain state.
 2. An **LLM explainer** that turns the engine's findings into plain English and
-   cites exact source lines.
+   cites the evidence for each finding — file and line for source findings,
+   the measured on-chain value for on-chain findings.
 3. **Live on-chain data** — verified source via Sourcify, token/pair data via
    public BSC RPCs and the Dexscreener API.
 4. A modern **Next.js app** with a haunted-house UI (ghost meter, risk score 0–100).
@@ -54,8 +55,10 @@ The engine MUST run these checks (each returns severity + evidence + line refs):
 - R6. Renounce status: owner() == 0x0 means renounced (good).
 - R7. LP burn share: share of the main pair's LP tokens held by burn addresses
   (0x000…dEaD / 0x0) via eth_call balanceOf.
-- R8. Top-holder concentration: top-10 share of total supply, computed from a
-  bounded Transfer-log scan (best effort; "unknown" if the scan fails).
+- R8. Pair-share proxy (in place of a top-holder scan): the share of total
+  supply sitting in the main DEX pair, used because public BSC RPCs refuse
+  `eth_getLogs`. Labelled as a proxy wherever it is shown, never as a
+  holder scan. (Best effort; "unknown" if the pair data is missing.)
 - R9. Liquidity & pair health (Dexscreener): liquidity USD, pair age, 24h
   volume, buy/sell balance.
 - WHEN any data source fails THEN that check reports "unknown" and the scan
@@ -65,12 +68,16 @@ The engine MUST run these checks (each returns severity + evidence + line refs):
 - The risk score is an integer 0–100, computed ONLY from the engine findings.
 - Adding a finding MUST NEVER lower the score (monotonic).
 - The same findings MUST always produce the same score (deterministic).
-- No findings → score 0. Score bands: 0–24 "Resting in peace",
-  25–49 "Mildly haunted", 50–74 "Haunted", 75–100 "Possessed — do not touch".
+- No findings → score 0. Score bands: 0–12 "Resting in peace",
+  13–49 "Mildly haunted", 50–74 "Haunted", 75–100 "Possessed — do not touch".
+  One medium finding (12) is the edge of Resting; two mediums (24) already
+  read Mildly haunted.
 
 ### REQ-5 — LLM explainer
 - WHEN a scan completes THEN an LLM writes a plain-English summary of the
-  findings, citing exact source lines (file:line) for every claim.
+  findings, citing file and line only for source-based findings and stating
+  the measured on-chain value for on-chain findings — never inventing a
+  line for a finding that has none.
 - The explainer MUST NOT invent vulnerabilities not present in the findings.
 - The explainer MUST NEVER call a contract "audited" or "safe" — the strongest
   allowed wording is "no red flags found in this scan".

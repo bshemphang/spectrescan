@@ -408,6 +408,11 @@ function mintBodyHasEnforcedCap(body: string, fileContent: string): boolean {
  * assigned to the deployer's balance — the SELO shape: one wallet starts
  * out holding 100% of the token.
  *
+ * A majority mint (90% or more, e.g. `totalSupply * 99 / 100` with the
+ * rest to a fee address) counts too, with an "almost the entire supply"
+ * title, since one address still starts out holding nearly everything.
+ * A 50/50 split or a small deployer share does not count.
+ *
  * Searched in the constructor AND in initialize() functions (proxy
  * pattern), and the supply variable may be declared at the top level
  * (a state-var initializer) rather than inside the function body.
@@ -441,10 +446,13 @@ export function deployerMintCheck(sources: SourceFile[]): Finding | null {
           id: "deployer-mint",
           check: "R2",
           severity: "high",
-          title: "Entire supply minted to the deployer at launch",
-          detail:
-            `The ${label} hands the whole token supply to the deployer's wallet. One address starts out holding 100% of the supply and can sell it all at any time.`,
-          evidence: [`${file.path}:${hit}`],
+          title: hit.majority
+            ? "Almost the entire supply minted to the deployer at launch"
+            : "Entire supply minted to the deployer at launch",
+          detail: hit.majority
+            ? `The ${label} hands almost the whole token supply (90% or more) to the deployer's wallet. One address starts out holding nearly everything and can sell it all at any time.`
+            : `The ${label} hands the whole token supply to the deployer's wallet. One address starts out holding 100% of the supply and can sell it all at any time.`,
+          evidence: [`${file.path}:${hit.line}`],
           weight: weightFor("high"),
         };
       }
@@ -458,7 +466,7 @@ function checkDeployerMintBody(
   body: string,
   bodyStart: number,
   fileSupplyVars: Set<string>,
-): number | null {
+): { line: number; majority: boolean } | null {
   const lineOf = (indexInBody: number): number =>
     content.slice(0, bodyStart).split("\n").length +
     body.slice(0, indexInBody).split("\n").length -
@@ -473,18 +481,31 @@ function checkDeployerMintBody(
   }
 
   // (a) A supply variable handed to msg.sender's balance or minted to it.
+  // If a `*` or `-` follows the variable, the deployer gets only part of
+  // the supply; case (d) decides whether it is still a majority mint.
   for (const v of supplyVars) {
     const deployerAssign = new RegExp(
       `balances?_?\\s*\\[\\s*msg\\.sender\\s*\\]\\s*=\\s*${v}\\b`,
     );
+    const assignMatch = body.match(deployerAssign);
+    if (assignMatch && assignMatch.index !== undefined) {
+      const after = body
+        .slice(assignMatch.index + assignMatch[0].length)
+        .trimStart();
+      if (!after.startsWith("*") && !after.startsWith("-")) {
+        return { line: lineOf(assignMatch.index), majority: false };
+      }
+    }
     const mintCall = new RegExp(`_mint\\(msg\\.sender,\\s*${v}\\b`);
-    const idx =
-      body.search(deployerAssign) !== -1
-        ? body.search(deployerAssign)
-        : body.search(mintCall) !== -1
-          ? body.search(mintCall)
-          : -1;
-    if (idx !== -1) return lineOf(idx);
+    const mintMatch = body.match(mintCall);
+    if (mintMatch && mintMatch.index !== undefined) {
+      const after = body
+        .slice(mintMatch.index + mintMatch[0].length)
+        .trimStart();
+      if (!after.startsWith("*") && !after.startsWith("-")) {
+        return { line: lineOf(mintMatch.index), majority: false };
+      }
+    }
   }
 
   // (b) A single _mint to msg.sender of a hardcoded amount: the only
@@ -500,7 +521,7 @@ function checkDeployerMintBody(
         /^[0-9]/.test(amountHead) ||
         /^[A-Z][A-Z0-9_]*\b/.test(amountHead)
       ) {
-        return lineOf(mintCalls[0].index!);
+        return { line: lineOf(mintCalls[0].index!), majority: false };
       }
     }
   }
@@ -509,7 +530,64 @@ function checkDeployerMintBody(
   const balAssigns = [...body.matchAll(/balances?_?\s*\[\s*msg\.sender\s*\]\s*=\s*([0-9][0-9_]*)/g)];
   if (balAssigns.length === 1) {
     const otherAssigns = [...body.matchAll(/balances?_?\s*\[/g)].length;
-    if (otherAssigns === 1) return lineOf(balAssigns[0].index!);
+    if (otherAssigns === 1) return { line: lineOf(balAssigns[0].index!), majority: false };
+  }
+
+  // (d) A mint to msg.sender of a large fraction of the supply (>= 90%):
+  // `totalSupply * 99 / 100`, `supply * 95 / 100`, or `totalSupply - fee`.
+  // The deployer still starts out holding almost everything; the rest
+  // is usually a fee address, not distribution.
+  for (const v of supplyVars) {
+    const frac = new RegExp(
+      `_mint\\(msg\\.sender,\\s*${v}\\s*\\*\\s*(\\d+)\\s*/\\s*(\\d+)`,
+    );
+    const fm = body.match(frac);
+    if (fm) {
+      const num = Number(fm[1]);
+      const den = Number(fm[2]);
+      if (den > 0 && num / den >= 0.9 && num / den < 1) {
+        return { line: lineOf(fm.index!), majority: true };
+      }
+    }
+    const minus = new RegExp(`_mint\\(msg\\.sender,\\s*${v}\\s*-\\s*`);
+    const mm = body.match(minus);
+    if (mm) return { line: lineOf(mm.index!), majority: true };
+    const fracAssign = new RegExp(
+      `balances?_?\\s*\\[\\s*msg\\.sender\\s*\\]\\s*=\\s*${v}\\s*\\*\\s*(\\d+)\\s*/\\s*(\\d+)`,
+    );
+    const fa = body.match(fracAssign);
+    if (fa) {
+      const num = Number(fa[1]);
+      const den = Number(fa[2]);
+      if (den > 0 && num / den >= 0.9 && num / den < 1) {
+        return { line: lineOf(fa.index!), majority: true };
+      }
+    }
+  }
+
+  // (e) Two hardcoded mints: a large one to msg.sender and a small one
+  // elsewhere. Compare the leading literals; flag when the deployer's
+  // share of the two combined is >= 90%.
+  if (mintCalls.length === 2) {
+    const amounts = mintCalls.map((m) => {
+      const after = body.slice(m.index! + m[0].length).trim();
+      const lit = after.match(/^([0-9][0-9_]*)/);
+      return {
+        recipient: m[1].trim(),
+        value: lit ? Number(lit[1].replace(/_/g, "")) : null,
+        index: m.index!,
+      };
+    });
+    const mine = amounts.find((a) => a.recipient === "msg.sender");
+    const other = amounts.find((a) => a.recipient !== "msg.sender");
+    if (
+      mine && other &&
+      mine.value !== null && other.value !== null &&
+      other.value > 0 &&
+      mine.value / (mine.value + other.value) >= 0.9
+    ) {
+      return { line: lineOf(mine.index), majority: true };
+    }
   }
 
   return null;

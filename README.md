@@ -4,7 +4,7 @@
 
 Paste any BNB Chain contract address. SpectreScan reads its verified source
 and on-chain footprint, then tells you in plain English whether it is safe
-to touch — with the exact source lines cited.
+to touch — with the evidence cited for each finding.
 
 ```
 SELO  (0x9034…5df7)  →  score 100/100 — Possessed — do not touch
@@ -20,9 +20,10 @@ Four genuinely incompatible technologies in one app:
 
 1. **A 1990s-style deterministic expert-system rules engine** — hand-written
    checks, no ML. Honeypot patterns, mint/pause/blacklist detection, owner
-   analysis, LP burn share, holder concentration, pair health.
-2. **An LLM explainer** that turns the engine's findings into plain English
-   and cites exact source lines. It can describe findings but never change
+   analysis, LP burn share, pair-share proxy, pair health.
+2. **An LLM explainer** that turns the engine's findings into plain English,
+   citing file and line for source findings and measured values for
+   on-chain findings. It can describe findings but never change
    the score, never invent a vulnerability, and never call anything
    "audited".
 3. **Live on-chain data** — verified source via Sourcify, token/pair data
@@ -36,12 +37,12 @@ UI can never disagree.
 
 ## How the score works
 
-The risk score is a sum of fixed severity weights (critical 40, high 25,
+The risk score is a sum of fixed severity weights (critical 75, high 50,
 medium 12, low 5, info 0), capped at 100. Adding a finding can never lower
 the score, and the same findings always produce the same score — proven by
 property tests (`app/tests/scoring.property.test.ts`).
 
-Bands: 0–24 "Resting in peace" · 25–49 "Mildly haunted" · 50–74 "Haunted" ·
+Bands: 0–12 "Resting in peace" · 13–49 "Mildly haunted" · 50–74 "Haunted" ·
 75–100 "Possessed — do not touch".
 
 Context matters: a mint function is HIGH when the owner is a wallet, but
@@ -107,8 +108,8 @@ LICENSE  README.md  KIRO_USAGE.md  VIDEO_SCRIPT.md
 - **Sourcify** — verified contract source (v2 API, chain 56).
 - **Public BSC RPCs** — `eth_call` (name/symbol/decimals/totalSupply/
   owner/balanceOf), `eth_getCode`, `eth_blockNumber`. Note: public RPCs
-  refuse `eth_getLogs` (verified 2026-11-08), so holder concentration uses
-  a pair-share proxy when the log scan fails — see the design doc.
+  refuse `eth_getLogs` (verified 2026-11-08), so the top-holder check uses
+  a pair-share proxy instead of a log scan — see the design doc.
 - **Dexscreener** — pairs, liquidity, volume, buy/sell balance.
 - **Pollinations** — keyless LLM for the plain-English verdict
   (POST, model "openai", `reasoning_effort: "low"`).
