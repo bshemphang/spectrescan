@@ -368,7 +368,12 @@ export default function ScanReport({
       {dossier ? (
         <>
           <IdentityCard result={result} dossier={dossier} />
-          <BubbleMap dossier={dossier} tokenAddress={result.address} />
+          <BubbleMap
+            dossier={dossier}
+            tokenAddress={result.address}
+            decimals={result.token.decimals}
+            symbol={result.token.symbol}
+          />
           <TransferFlow
             dossier={dossier}
             decimals={result.token.decimals}

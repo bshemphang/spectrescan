@@ -69,6 +69,28 @@ describe("summarizeLogs", () => {
     expect(formatShare(s.holders[0].share)).toBe("0.0090%");
   });
 
+  it("counts transfers per address in the window", () => {
+    const s = summarizeLogs(LOGS, 1000n, null, false, EXCLUDED);
+    // A: mint in, two sends out. B: one in, one out. C: one in.
+    // DEAD: one burn in.
+    expect(s.holders[0]).toMatchObject({
+      address: A.toLowerCase(),
+      transfers: 3,
+    });
+    expect(s.holders[1]).toMatchObject({
+      address: B.toLowerCase(),
+      transfers: 2,
+    });
+    expect(s.holders[2]).toMatchObject({
+      address: C.toLowerCase(),
+      transfers: 1,
+    });
+    expect(s.holders[3]).toMatchObject({
+      address: DEAD.toLowerCase(),
+      transfers: 1,
+    });
+  });
+
   it("finds the first minter and the first seen block", () => {
     const s = summarizeLogs(LOGS, 1000n, null, false, EXCLUDED);
     expect(s.firstMinter).toBe(A.toLowerCase());

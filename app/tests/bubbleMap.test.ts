@@ -7,7 +7,7 @@
 // share is 0.
 
 import { describe, expect, it } from "vitest";
-import { pack } from "../src/components/BubbleMap";
+import { pack, visibleEdges } from "../src/components/BubbleMap";
 
 const A = "0x1111111111111111111111111111111111111111";
 const B = "0x2222222222222222222222222222222222222222";
@@ -84,5 +84,51 @@ describe("pack", () => {
       expect(b.y - b.r).toBeGreaterThanOrEqual(0);
       expect(b.y + b.r).toBeLessThanOrEqual(380);
     }
+  });
+});
+
+describe("visibleEdges", () => {
+  const bubbles = [
+    { x: 100, y: 100, r: 40, address: A, share: 10, kind: "holder" as const },
+    { x: 300, y: 100, r: 30, address: B, share: 5, kind: "holder" as const },
+    { x: 500, y: 100, r: 20, address: C, share: 1, kind: "holder" as const },
+  ];
+  const D = "0x4444444444444444444444444444444444444444";
+
+  it("keeps only moves where both ends are shown bubbles", () => {
+    const edges = visibleEdges(bubbles, [
+      { from: A, to: B, value: "100" },
+      { from: A, to: D, value: "999" },
+      { from: D, to: C, value: "999" },
+    ]);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].from.address).toBe(A);
+    expect(edges[0].to.address).toBe(B);
+    expect(edges[0].value).toBe("100");
+  });
+
+  it("skips self transfers", () => {
+    const edges = visibleEdges(bubbles, [
+      { from: A, to: A, value: "100" },
+      { from: B, to: C, value: "50" },
+    ]);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].from.address).toBe(B);
+  });
+
+  it("caps edges at 8", () => {
+    const moves = Array.from({ length: 12 }, (_, i) => ({
+      from: i % 2 === 0 ? A : B,
+      to: i % 2 === 0 ? B : C,
+      value: String(100 - i),
+    }));
+    expect(visibleEdges(bubbles, moves)).toHaveLength(8);
+  });
+
+  it("matches addresses case-insensitively", () => {
+    const edges = visibleEdges(bubbles, [
+      { from: A.toUpperCase(), to: B.toLowerCase(), value: "7" },
+    ]);
+    expect(edges).toHaveLength(1);
   });
 });

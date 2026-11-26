@@ -58,6 +58,7 @@ export interface HolderEntry {
   netBalance: string; // raw uint256 string, can be negative in sign via leading "-"
   totalReceived: string;
   totalSent: string;
+  transfers: number; // Transfer logs in the window where this address sent or received
   share: number | null; // share of total supply, null when supply unknown
 }
 
@@ -139,6 +140,7 @@ export function summarizeLogs(
   const net = new Map<string, bigint>();
   const received = new Map<string, bigint>();
   const sent = new Map<string, bigint>();
+  const transferCount = new Map<string, number>();
   let totalMoved = 0n;
   let firstSeenBlock: number | null = null;
   let firstMinter: string | null = null;
@@ -179,6 +181,10 @@ export function summarizeLogs(
     add(net, from, -value);
     add(received, to, value);
     add(sent, from, value);
+    transferCount.set(from, (transferCount.get(from) ?? 0) + 1);
+    if (to !== from) {
+      transferCount.set(to, (transferCount.get(to) ?? 0) + 1);
+    }
     moves.push({ from, to, value: value.toString(), blockNumber: log.blockNumber });
   }
 
@@ -189,6 +195,7 @@ export function summarizeLogs(
     netBalance: balance.toString(),
     totalReceived: (received.get(address) ?? 0n).toString(),
     totalSent: (sent.get(address) ?? 0n).toString(),
+    transfers: transferCount.get(address) ?? 0,
     share:
       // Four decimals, not two: a top window mover on a big-supply
       // token can hold 0.009% and still be the biggest bubble. Two
