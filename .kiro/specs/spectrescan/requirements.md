@@ -69,7 +69,7 @@ The engine MUST run these checks (each returns severity + evidence + line refs):
 - Adding a finding MUST NEVER lower the score (monotonic).
 - The same findings MUST always produce the same score (deterministic).
 - No findings → score 0. Score bands: 0–12 "Resting in peace",
-  13–49 "Mildly haunted", 50–74 "Haunted", 75–100 "Possessed — do not touch".
+  13–49 "Mildly haunted", 50–74 "Haunted", 75–100 "Possessed".
   One medium finding (12) is the edge of Resting; two mediums (24) already
   read Mildly haunted.
 

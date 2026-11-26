@@ -19,7 +19,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { address } = await params;
   return {
-    title: `Scan ${address} — SpectreScan`,
+    title: `Scan ${address} | SpectreScan`,
     description:
       "SpectreScan reads a BNB Chain contract's verified source and on-chain footprint and tells you what is wrong with it, with the evidence cited.",
   };

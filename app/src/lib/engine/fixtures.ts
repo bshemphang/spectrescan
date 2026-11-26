@@ -25,7 +25,7 @@ export const SAMPLE_CONTRACTS: SampleContract[] = [
     tagline: "Creator holds 100% of the supply",
     expectAtLeast: "Haunted",
     sampleScore: 100,
-    sampleBand: "Possessed — do not touch",
+    sampleBand: "Possessed",
   },
   {
     address: "0x07D1554f450bE9158993180Dd0494A00C5c696dA",
@@ -33,7 +33,7 @@ export const SAMPLE_CONTRACTS: SampleContract[] = [
     tagline: "Honeypot flags, mintable, pausable",
     expectAtLeast: "Haunted",
     sampleScore: 100,
-    sampleBand: "Possessed — do not touch",
+    sampleBand: "Possessed",
   },
   {
     address: "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82",

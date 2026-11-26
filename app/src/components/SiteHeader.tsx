@@ -1,12 +1,18 @@
-// SpectreScan — site header: wordmark plus a quiet chain label.
-// Shared by the home page and the scan page.
+// SpectreScan — site header: wordmark, page nav, sound toggle, chain
+// label. Shared by every page.
 
 import Link from "next/link";
 import { Ghost } from "lucide-react";
+import SoundToggle from "./SoundToggle";
+
+const NAV = [
+  { href: "/registry", label: "Registry" },
+  { href: "/how-it-works", label: "How it works" },
+];
 
 export default function SiteHeader() {
   return (
-    <header className="flex items-center justify-between pt-6">
+    <header className="flex items-center justify-between gap-3 pt-6">
       <Link
         href="/"
         className="flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
@@ -18,7 +24,23 @@ export default function SiteHeader() {
           SpectreScan
         </span>
       </Link>
-      <span className="font-mono text-xs text-bone-dim">BSC · Chain 56</span>
+      <div className="flex items-center gap-2 sm:gap-4">
+        <nav aria-label="Site" className="flex items-center gap-3 sm:gap-4">
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="whitespace-nowrap rounded font-mono text-xs text-bone-dim transition-colors hover:text-bone focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral sm:text-sm"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <SoundToggle />
+        <span className="hidden font-mono text-xs text-bone-dim sm:inline">
+          BSC · Chain 56
+        </span>
+      </div>
     </header>
   );
 }

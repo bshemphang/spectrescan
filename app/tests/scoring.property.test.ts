@@ -88,7 +88,7 @@ describe("scoreFindings", () => {
       evidence: [],
       weight: weightFor("critical"),
     };
-    expect(bandFor(scoreFindings([crit]))).toBe("Possessed — do not touch");
+    expect(bandFor(scoreFindings([crit]))).toBe("Possessed");
   });
 
   it("one high finding alone reaches Haunted", () => {
@@ -113,8 +113,8 @@ describe("bandFor", () => {
     expect(bandFor(49)).toBe("Mildly haunted");
     expect(bandFor(50)).toBe("Haunted");
     expect(bandFor(74)).toBe("Haunted");
-    expect(bandFor(75)).toBe("Possessed — do not touch");
-    expect(bandFor(100)).toBe("Possessed — do not touch");
+    expect(bandFor(75)).toBe("Possessed");
+    expect(bandFor(100)).toBe("Possessed");
   });
 
   it("two medium findings land at least in Mildly haunted", () => {

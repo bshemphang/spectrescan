@@ -21,7 +21,7 @@ describe("live fixture scans", () => {
       }
       if (sample.expectAtLeast === "Haunted") {
         expect(result.score).toBeGreaterThanOrEqual(50);
-        expect(["Haunted", "Possessed — do not touch"]).toContain(result.band);
+        expect(["Haunted", "Possessed"]).toContain(result.band);
       } else {
         expect(result.score).toBeLessThan(50);
         expect(["Resting in peace", "Mildly haunted"]).toContain(result.band);

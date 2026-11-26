@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
-import ScanProgress from "@/components/ScanProgress";
+import TerminalRun from "@/components/TerminalRun";
 import ScanReport from "@/components/ScanReport";
 import { saveRecent } from "@/lib/recent";
 import type { ScanResult } from "@/lib/engine/types";
@@ -37,14 +37,18 @@ export default function ScanPageClient({ address }: { address: string }) {
         setResult(json);
         setElapsed((Date.now() - started) / 1000);
         setScanning(false);
-        saveRecent({
-          address: json.address,
-          name: json.token.name,
-          symbol: json.token.symbol,
-          score: json.score,
-          band: json.band,
-          scannedAt: json.scannedAt,
-        });
+        // Wallet lookups are not contract scans: they never enter the
+        // recent-scans list or the registry.
+        if (!json.isEOA) {
+          saveRecent({
+            address: json.address,
+            name: json.token.name,
+            symbol: json.token.symbol,
+            score: json.score,
+            band: json.band,
+            scannedAt: json.scannedAt,
+          });
+        }
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -58,7 +62,7 @@ export default function ScanPageClient({ address }: { address: string }) {
 
   return (
     <>
-      {scanning && <ScanProgress active />}
+      {scanning && <TerminalRun address={address} />}
       {error && (
         <div
           className="mt-8 flex items-start gap-3 rounded-xl border border-blood/40 bg-blood/10 p-4"

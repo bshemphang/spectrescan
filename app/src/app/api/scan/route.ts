@@ -6,7 +6,7 @@
 // the explainer against a fresh cached result, so the verdict can be
 // retried without a full rescan.
 
-import { explainScan } from "@/lib/explainer";
+import { buildLocalVerdict, explainScan } from "@/lib/explainer";
 import { isValidAddress, scanContract } from "@/lib/engine/scan";
 import type { ScanResult } from "@/lib/engine/types";
 
@@ -82,20 +82,37 @@ export async function POST(request: Request) {
   const key = address.trim().toLowerCase();
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) {
-    if (retryExplainer) {
+    if (retryExplainer && !hit.result.isEOA) {
       // Verdict-only retry: the engine result is still fresh, so only
-      // re-run the explainer and update the cached verdict.
+      // re-run the explainer and update the cached verdict. A failed
+      // retry falls back to the local verdict, same as a fresh scan.
+      // Copy-on-write: the cached object is never mutated in place,
+      // so a failed or concurrent retry cannot downgrade the verdict
+      // every later visitor reads. A wallet has no verdict to retry.
       const explanation = await explainScan(hit.result);
-      hit.result.explanation = explanation;
-      hit.result.explainerFailed = explanation === null;
+      const updated: ScanResult = {
+        ...hit.result,
+        explanation: explanation ?? buildLocalVerdict(hit.result),
+        explanationLocal: explanation === null,
+        explainerFailed: explanation === null,
+      };
+      cachePut(key, updated);
+      return Response.json(updated);
     }
     return Response.json(hit.result);
   }
 
   const result = await scanContract(address);
-  const explanation = await explainScan(result);
-  result.explanation = explanation;
-  result.explainerFailed = explanation === null;
+  // A wallet address needs no verdict: there is nothing to explain.
+  // The EOA panel in the UI states the fact in plain words.
+  // When the LLM explainer fails, the verdict is written from the
+  // findings instead, so the verdict area never shows a failure.
+  const explanation = result.isEOA ? null : await explainScan(result);
+  result.explanation = result.isEOA
+    ? null
+    : (explanation ?? buildLocalVerdict(result));
+  result.explanationLocal = !result.isEOA && explanation === null;
+  result.explainerFailed = explanation === null && !result.isEOA;
   cachePut(key, result);
   return Response.json(result);
 }

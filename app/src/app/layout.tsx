@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter, Geist_Mono } from "next/font/google";
+import { Fraunces, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import EffectsCanvas from "@/components/EffectsCanvas";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
   weight: ["500", "600", "700"],
-});
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
@@ -19,11 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SpectreScan — Is this contract haunted?",
+  title: "SpectreScan: Is this contract haunted?",
   description:
-    "Paste any BSC contract address and get a plain-English haunting report: honeypot flags, hidden owners, LP locks, holder concentration — with the exact source lines cited. SpectreScan is not an audit.",
+    "Paste any BSC contract address and get a plain-English haunting report: honeypot flags, hidden owners, LP locks, holder concentration, with the exact source lines cited. SpectreScan is not an audit.",
   openGraph: {
-    title: "SpectreScan — Is this contract haunted?",
+    title: "SpectreScan: Is this contract haunted?",
     description:
       "A ghost-hunter for smart contracts. Paste a BSC address, get a plain-English haunting report with cited evidence.",
     type: "website",
@@ -34,7 +30,7 @@ export default function RootLayout(props: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="haunt-bg min-h-full">
         <a
@@ -43,6 +39,10 @@ export default function RootLayout(props: LayoutProps<"/">) {
         >
           Skip to content
         </a>
+        {/* One canvas effects layer over the page (z-1): mist, particles
+            and the drifting ghost, above the hero video (z-0), below the
+            page content (z-2). Colours come from the CSS variables. */}
+        <EffectsCanvas />
         <div aria-hidden className="atmosphere">
           <div className="atmosphere-grid" />
           <div className="atmosphere-glow" />

@@ -14,12 +14,15 @@
 
 import type { Finding, ScanResult } from "./types";
 import { bandFor, scoreFindings, weightFor } from "./scoring";
+import { analyzeTransfers, checkProxy } from "./holders";
 import {
+  bestPair,
   callDecimals,
   callName,
   callOwner,
   callSymbol,
   callTotalSupply,
+  ethGetCode,
   getDexPairs,
   getSourcifySource,
   isContract,
@@ -49,9 +52,53 @@ function setSeverity(f: Finding, to: Finding["severity"]): void {
   f.weight = weightFor(to);
 }
 
+// Result for a wallet address (EOA): no code at the address, so no
+// token checks apply. Score 0 with a single info finding that says so
+// in plain words. Never a haunted score, never token findings.
+export function buildEoaResult(address: string, scannedAt: string): ScanResult {
+  return {
+    address,
+    chainId: 56,
+    scannedAt,
+    score: 0,
+    band: "Resting in peace",
+    token: { name: null, symbol: null, decimals: null, totalSupply: null },
+    verified: false,
+    verificationStatus: "none",
+    findings: [
+      {
+        id: "not-a-contract",
+        check: "R0",
+        severity: "info",
+        title: "This is a wallet, not a smart contract",
+        detail:
+          "This address holds no contract code. It is a wallet address, so there is no token logic to read, no owner function to check, and no trading pair to measure. Nothing here can be haunted, and no risk score applies.",
+        evidence: ["eth_getCode returned 0x"],
+        weight: 0,
+      },
+    ],
+    explanation: null,
+    explainerFailed: false,
+    sources: { sourcify: false, dexscreener: false, rpc: true },
+    isEOA: true,
+  };
+}
+
 export async function scanContract(rawAddress: string): Promise<ScanResult> {
   const address = rawAddress.trim();
   const startedAt = new Date().toISOString();
+
+  // EOA check first, before any token logic runs: an address with no
+  // deployed code is a wallet, not a contract. Scoring it as a haunted
+  // token (unverified source, no owner, no pair) is misleading, so the
+  // scan stops here with a plain statement instead. When the code read
+  // itself fails (null) the address cannot be classified, so the scan
+  // proceeds normally and reports what it could and could not read.
+  const code = await ethGetCode(address);
+  if (code !== null && code === "0x") {
+    return buildEoaResult(address, startedAt);
+  }
+
   const findings: Finding[] = [];
   const sources = { sourcify: false, dexscreener: false, rpc: false };
 
@@ -74,6 +121,15 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
   ]);
   if (sourcify) sources.sourcify = true;
   if (pairs) sources.dexscreener = true;
+
+  // One Transfer-log scan feeds the R8 finding and the whole dossier
+  // (bubble map, flow, first seen, first minter). The proxy check
+  // reuses the eth_getCode result from the EOA check above, so no
+  // second code read is needed.
+  const [analysis, proxy] = await Promise.all([
+    analyzeTransfers(address, tokenMeta.totalSupply, pairs),
+    checkProxy(address, code),
+  ]);
 
   // Owner context: fetched once, reused by the owner check and by the
   // mintable downgrade below.
@@ -152,7 +208,9 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
 
   // R8 — holder concentration (log scan with pair-share fallback).
   try {
-    findings.push(await holderConcentrationFinding(address, pairs));
+    findings.push(
+      await holderConcentrationFinding(analysis, address, pairs),
+    );
   } catch {
     // Same guard as above.
   }
@@ -172,8 +230,8 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
     const almost = deployerMint.majority === true;
     setSeverity(noPair, "high");
     noPair.title = almost
-      ? "No trading pair — and the deployer holds almost everything"
-      : "No trading pair — and the deployer holds everything";
+      ? "No trading pair, and the deployer holds almost everything"
+      : "No trading pair, and the deployer holds everything";
     noPair.detail = almost
       ? "No DEX pair exists for this token, so there is nowhere to sell it, and almost the whole supply was minted to the deployer's wallet at launch. Even if a pair appears later, one address holds nearly the entire supply."
       : "No DEX pair exists for this token, so there is nowhere to sell it, and the whole supply was minted to the deployer's wallet at launch. Even if a pair appears later, one address holds the entire supply.";
@@ -198,5 +256,6 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
     explanation: null,
     explainerFailed: false,
     sources,
+    dossier: { analysis, proxy, pair: bestPair(pairs) },
   };
 }

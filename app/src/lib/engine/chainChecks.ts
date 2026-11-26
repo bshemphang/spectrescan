@@ -4,14 +4,13 @@
 
 import type { DexPair, Finding } from "./types";
 import { weightFor } from "./scoring";
+import { type TransferAnalysis } from "./holders";
 import {
   BURN_ADDRESSES,
   bestPair,
   callBalanceOf,
   callSlot0,
   callTotalSupply,
-  ethBlockNumber,
-  ethGetLogs,
 } from "./fetchers";
 
 function finding(
@@ -54,7 +53,7 @@ export function verificationFinding(
     "R1",
     "medium",
     "Contract source NOT verified",
-    "Nobody has published the source code for this contract, so its behaviour cannot be read — only its on-chain footprint can be checked.",
+    "Nobody has published the source code for this contract, so its behaviour cannot be read. Only its on-chain footprint can be checked.",
     ["sourcify: no match"],
   );
 }
@@ -160,7 +159,7 @@ export async function lpBurnFinding(
         "lp-v3-unverified",
         "R7",
         "medium",
-        "Concentrated-liquidity (V3) pool — lock status unknown",
+        "Concentrated-liquidity (V3) pool, lock status unknown",
         "This pair is a V3-style pool, so there is no LP token to burn or lock. Liquidity sits in concentrated NFT positions owned by individual providers, and those positions cannot be checked from public data. Providers can withdraw their liquidity at any time, so do not treat this liquidity as locked.",
         [`pair ${pair.pairAddress}`, "slot0() present, totalSupply() reverts"],
       );
@@ -205,163 +204,88 @@ export async function lpBurnFinding(
     "R7",
     "medium",
     `LP barely burned (${share.toFixed(1)}%)`,
-    "Almost none of the LP tokens are burned, so whoever holds them can pull the liquidity at any time — the classic rug-pull setup.",
+    "Almost none of the LP tokens are burned, so whoever holds them can pull the liquidity at any time. That is the classic rug-pull setup.",
     [`burned LP share = ${share.toFixed(1)}%`, `pair ${pair.pairAddress}`],
   );
 }
 
-// R8 — top-holder concentration from a bounded Transfer-log scan.
-// The log scan covers only the last 20,000 blocks, about 17 hours on
-// BSC. Every finding built from that scan says so in its detail: older
-// transfers fall out of view and must not be hidden from the reader.
-const HOLDER_WINDOW_NOTE =
-  " The scan covered only the last 20,000 blocks (about 17 hours on BSC), so transfers older than that are not in view.";
+// R8 — holder concentration, pair-share proxy only (design.md).
+// The design defines R8 as the pair-share proxy: the share of total
+// supply sitting in the main DEX pair. The Transfer-log scan feeds
+// the dossier (bubble map, transfer flow, first seen, first minter),
+// never this score: a 20,000-block window of movement is not a
+// holder list, and for a large token the top-10 window movement is a
+// rounding error of supply, so scoring it as "distributed" would be
+// wrong. Pair share < 10% -> medium, >= 10% -> info (inconclusive).
+// No pair -> unknown. The analysis argument only supplies the
+// totalSupply and latest-block reads (and names which read failed).
 export async function holderConcentrationFinding(
+  analysis: TransferAnalysis,
   tokenAddress: string,
   pairs: DexPair[] | null,
 ): Promise<Finding> {
-  const total = await callTotalSupply(tokenAddress);
-  const latest = await ethBlockNumber();
+  const total =
+    analysis.totalSupply === null ? null : BigInt(analysis.totalSupply);
+  const latest = analysis.window?.toBlock ?? null;
   if (total === null || total === 0n || latest === null) {
+    // Say which read failed: "the token supply or the latest block
+    // could not be read" hides whether the chain was unreachable or
+    // the address simply has no token code.
+    const failed =
+      total === null
+        ? "totalSupply() read failed on all public RPCs"
+        : latest === null
+          ? "eth_blockNumber read failed on all public RPCs"
+          : "totalSupply() returned zero";
     return finding(
       "holders-unknown",
       "R8",
       "info",
       "Holder distribution could not be read",
       "The token supply or the latest block could not be read, so holder concentration is unknown.",
-      ["rpc read failed"],
+      [failed],
     );
   }
   const pair = bestPair(pairs);
-  const excluded = new Set<string>([
-    ...BURN_ADDRESSES.map((a) => a.toLowerCase()),
-    tokenAddress.toLowerCase(),
-    ...(pair ? [pair.pairAddress.toLowerCase()] : []),
-  ]);
-  const BLOCK_WINDOW = 20000;
-  const CHUNK = 2000;
-  const fromBlock = Math.max(0, latest - BLOCK_WINDOW);
-  const balances = new Map<string, bigint>();
-  const deadline = Date.now() + 15000;
-  let logsFailed = false;
-  try {
-    for (let from = fromBlock; from <= latest; from += CHUNK) {
-      if (Date.now() > deadline) throw new Error("holder scan timed out");
-      const to = Math.min(from + CHUNK - 1, latest);
-      const logs = await ethGetLogs(tokenAddress, from, to);
-      if (logs === null) throw new Error("eth_getLogs failed");
-      for (const log of logs) {
-        if (!log.topics || log.topics.length < 3) continue;
-        const toAddr = "0x" + log.topics[2].slice(-40).toLowerCase();
-        const fromAddr = "0x" + log.topics[1].slice(-40).toLowerCase();
-        let value = 0n;
-        try {
-          value = BigInt(log.data);
-        } catch {
-          continue;
-        }
-        if (!excluded.has(toAddr)) {
-          balances.set(toAddr, (balances.get(toAddr) ?? 0n) + value);
-        }
-        if (!excluded.has(fromAddr)) {
-          balances.set(fromAddr, (balances.get(fromAddr) ?? 0n) - value);
-        }
-      }
-    }
-  } catch {
-    logsFailed = true;
-  }
-  if (logsFailed || balances.size === 0) {
-    // Fallback: public BSC RPCs refuse eth_getLogs, so measure the share of
-    // supply sitting in the main pair instead. A pair holding only a small
-    // slice means most supply sits elsewhere — usually with the deployer.
-    if (!pair) {
-      return finding(
-        "holders-unknown",
-        "R8",
-        "info",
-        "Holder distribution could not be read",
-        "The Transfer-log scan failed and there is no trading pair to measure, so holder concentration is unknown rather than guessed.",
-        ["eth_getLogs refused by public RPCs", "dexscreener: no pairs"],
-      );
-    }
-    const pairBalance = await callBalanceOf(tokenAddress, pair.pairAddress);
-    if (pairBalance === null) {
-      return finding(
-        "holders-unknown",
-        "R8",
-        "info",
-        "Holder distribution could not be read",
-        "The Transfer-log scan failed and the pair balance could not be read, so holder concentration is unknown rather than guessed.",
-        ["eth_getLogs refused by public RPCs"],
-      );
-    }
-    const pairShare = Number((pairBalance * 10000n) / total) / 100;
-    if (pairShare < 10) {
-      return finding(
-        "holders-outside-pool",
-        "R8",
-        "medium",
-        `Only ${pairShare.toFixed(1)}% of supply sits in the pool`,
-        "Most of the token supply is held outside the trading pair — usually by the deployer or early insiders — so a small group can move the price hard.",
-        [`pair holds ${pairShare.toFixed(1)}% of total supply`, `pair ${pair.pairAddress}`],
-      );
-    }
+  if (!pair) {
     return finding(
-      "holders-in-pool",
+      "holders-unknown",
       "R8",
       "info",
-      `${pairShare.toFixed(1)}% of supply sits in the pool`,
-      "Transfer-log holder data was unavailable, so this is a pair-share proxy, not a full holder list. A pool share in this range says little about who holds the rest of the supply, so this reading is inconclusive — it does not mean holders are distributed.",
+      "Holder distribution could not be read",
+      "There is no trading pair to measure, so holder concentration is unknown rather than guessed.",
+      ["dexscreener: no pairs"],
+    );
+  }
+  const pairBalance = await callBalanceOf(tokenAddress, pair.pairAddress);
+  if (pairBalance === null) {
+    return finding(
+      "holders-unknown",
+      "R8",
+      "info",
+      "Holder distribution could not be read",
+      "The pair balance could not be read, so holder concentration is unknown rather than guessed.",
+      ["balanceOf(pair) read failed on all public RPCs"],
+    );
+  }
+  const pairShare = Number((pairBalance * 10000n) / total) / 100;
+  if (pairShare < 10) {
+    return finding(
+      "holders-outside-pool",
+      "R8",
+      "medium",
+      `Only ${pairShare.toFixed(1)}% of supply sits in the pool`,
+      "Most of the token supply is held outside the trading pair, usually by the deployer or early insiders, so a small group can move the price hard.",
       [`pair holds ${pairShare.toFixed(1)}% of total supply`, `pair ${pair.pairAddress}`],
     );
   }
-  const sorted = [...balances.values()]
-    .filter((v) => v > 0n)
-    .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
-  const top10 = sorted.slice(0, 10).reduce((s, v) => s + v, 0n);
-  const share = Number((top10 * 10000n) / total) / 100;
-  if (share >= 90) {
-    return finding(
-      "holders-concentrated",
-      "R8",
-      "high",
-      `Top 10 holders own ${share.toFixed(1)}%`,
-      "Almost the whole supply sits in ten wallets. A small group can crash the price by selling together." +
-        HOLDER_WINDOW_NOTE,
-      [`top-10 share = ${share.toFixed(1)}%`, `scanned last ${BLOCK_WINDOW} blocks`],
-    );
-  }
-  if (share >= 50) {
-    return finding(
-      "holders-mid",
-      "R8",
-      "medium",
-      `Top 10 holders own ${share.toFixed(1)}%`,
-      "Over half the supply sits in ten wallets. That is a concentrated holder base with real dump risk." +
-        HOLDER_WINDOW_NOTE,
-      [`top-10 share = ${share.toFixed(1)}%`, `scanned last ${BLOCK_WINDOW} blocks`],
-    );
-  }
-  if (share >= 30) {
-    return finding(
-      "holders-low",
-      "R8",
-      "low",
-      `Top 10 holders own ${share.toFixed(1)}%`,
-      "Holder concentration is moderate — worth watching, but not extreme." +
-        HOLDER_WINDOW_NOTE,
-      [`top-10 share = ${share.toFixed(1)}%`, `scanned last ${BLOCK_WINDOW} blocks`],
-    );
-  }
   return finding(
-    "holders-distributed",
+    "holders-in-pool",
     "R8",
     "info",
-    `Top 10 holders own ${share.toFixed(1)}%`,
-    "Supply looks reasonably distributed across holders in the scanned window." +
-      HOLDER_WINDOW_NOTE,
-    [`top-10 share = ${share.toFixed(1)}%`, `scanned last ${BLOCK_WINDOW} blocks`],
+    `${pairShare.toFixed(1)}% of supply sits in the pool`,
+    "This is a pair-share proxy, not a full holder list. A pool share in this range says little about who holds the rest of the supply, so this reading is inconclusive. It does not mean holders are distributed.",
+    [`pair holds ${pairShare.toFixed(1)}% of total supply`, `pair ${pair.pairAddress}`],
   );
 }
 

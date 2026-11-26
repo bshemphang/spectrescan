@@ -9,7 +9,22 @@ export const BSC_CHAIN_ID = 56;
 const RPC_URLS = [
   "https://bsc-dataseed1.bnbchain.org",
   "https://bsc-dataseed2.bnbchain.org",
+  "https://bsc-dataseed.bnbchain.org",
   "https://bsc.publicnode.com",
+];
+
+// eth_getLogs is the odd one out: the Binance dataseeds refuse it
+// outright ("limit exceeded", even for a 500-block range), and the
+// other public endpoints either time out, block it, or rate-limit.
+// Only bsc.publicnode.com answers logs at all, and it rate-limits
+// after a couple of rapid calls. So log reads try PublicNode first
+// (one attempt each: a rate-limit error is not fixed by an immediate
+// retry) and the dataseeds only as a fast-failing fallback.
+const LOG_RPC_URLS = [
+  "https://bsc.publicnode.com",
+  "https://bsc-dataseed1.bnbchain.org",
+  "https://bsc-dataseed2.bnbchain.org",
+  "https://bsc-dataseed.bnbchain.org",
 ];
 
 const TRANSFER_TOPIC =
@@ -93,27 +108,41 @@ export function bestPair(pairs: DexPair[] | null): DexPair | null {
 async function rpcPost(
   method: string,
   params: unknown[],
-  ms = 15000,
+  ms = 10000,
+  opts?: { urls?: string[]; attempts?: number },
 ): Promise<unknown> {
+  // Each endpoint gets two attempts by default: the public BSC
+  // endpoints drop requests under load, and one immediate retry on a
+  // network error recovers most of them. A bad JSON-RPC response
+  // (error field, or a null result) is not retried: the endpoint
+  // answered, it just has no data, so the next endpoint is tried
+  // instead. Attempts are bounded (4 endpoints x 2 tries x 10s) and
+  // failures are usually fast, so a full sweep stays well inside the
+  // scan budget. Log reads override both: PublicNode first, one
+  // attempt each (see LOG_RPC_URLS).
+  const urls = opts?.urls ?? RPC_URLS;
+  const attempts = opts?.attempts ?? 2;
   let lastErr: unknown = null;
-  for (const url of RPC_URLS) {
-    try {
-      const res = await fetchWithTimeout(
-        url,
-        ms,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        },
-      );
-      if (!res.ok) continue;
-      const json = (await res.json()) as { result?: unknown; error?: unknown };
-      if (json.error || json.result === undefined || json.result === null)
-        continue;
-      return json.result;
-    } catch (e) {
-      lastErr = e;
+  for (const url of urls) {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        const res = await fetchWithTimeout(
+          url,
+          ms,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+          },
+        );
+        if (!res.ok) continue;
+        const json = (await res.json()) as { result?: unknown; error?: unknown };
+        if (json.error || json.result === undefined || json.result === null)
+          continue;
+        return json.result;
+      } catch (e) {
+        lastErr = e;
+      }
     }
   }
   throw lastErr ?? new Error("all RPCs failed");
@@ -152,15 +181,96 @@ export async function ethGetLogs(
   toBlock: number,
 ): Promise<Array<{ topics: string[]; data: string }> | null> {
   try {
-    const result = (await rpcPost("eth_getLogs", [
-      {
-        address,
-        fromBlock: "0x" + fromBlock.toString(16),
-        toBlock: "0x" + toBlock.toString(16),
-        topics: [TRANSFER_TOPIC],
-      },
-    ])) as Array<{ topics: string[]; data: string }>;
+    const result = (await rpcPost(
+      "eth_getLogs",
+      [
+        {
+          address,
+          fromBlock: "0x" + fromBlock.toString(16),
+          toBlock: "0x" + toBlock.toString(16),
+          topics: [TRANSFER_TOPIC],
+        },
+      ],
+      10000,
+      { urls: LOG_RPC_URLS, attempts: 1 },
+    )) as Array<{ topics: string[]; data: string }>;
     return Array.isArray(result) ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+// Raw Transfer log with its block number: the dossier needs the block
+// for first-seen, first-minter, and biggest-move ordering.
+export interface TransferLog {
+  topics: string[];
+  data: string;
+  blockNumber: number;
+}
+
+export async function ethGetTransferLogs(
+  address: string,
+  fromBlock: number,
+  toBlock: number,
+): Promise<TransferLog[] | null> {
+  try {
+    const result = (await rpcPost(
+      "eth_getLogs",
+      [
+        {
+          address,
+          fromBlock: "0x" + fromBlock.toString(16),
+          toBlock: "0x" + toBlock.toString(16),
+          topics: [TRANSFER_TOPIC],
+        },
+      ],
+      10000,
+      { urls: LOG_RPC_URLS, attempts: 1 },
+    )) as Array<{ topics?: string[]; data?: string; blockNumber?: string }>;
+    if (!Array.isArray(result)) return null;
+    return result
+      .filter(
+        (l): l is { topics: string[]; data: string; blockNumber: string } =>
+          Array.isArray(l.topics) &&
+          typeof l.data === "string" &&
+          typeof l.blockNumber === "string",
+      )
+      .map((l) => ({
+        topics: l.topics,
+        data: l.data,
+        blockNumber: parseInt(l.blockNumber, 16),
+      }));
+  } catch {
+    return null;
+  }
+}
+
+export async function ethGetStorageAt(
+  address: string,
+  slot: string,
+): Promise<string | null> {
+  try {
+    const result = (await rpcPost("eth_getStorageAt", [
+      address,
+      slot,
+      "latest",
+    ])) as string;
+    return typeof result === "string" ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function ethGetBlockTimestamp(
+  blockNumber: number,
+): Promise<number | null> {
+  try {
+    const result = (await rpcPost("eth_getBlockByNumber", [
+      "0x" + blockNumber.toString(16),
+      false,
+    ])) as { timestamp?: string };
+    if (!result || typeof result.timestamp !== "string") return null;
+    return parseInt(result.timestamp, 16);
   } catch {
     return null;
   }

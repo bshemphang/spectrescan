@@ -13,7 +13,7 @@ const BAND_COLOR: Record<string, string> = {
   "Resting in peace": "#7fe0b2",
   "Mildly haunted": "#a78bfa",
   Haunted: "#f0a35e",
-  "Possessed — do not touch": "#f26d6d",
+  "Possessed": "#f26d6d",
 };
 
 function timeAgo(iso: string): string {

@@ -13,12 +13,36 @@
   --color-ember: #f0a35e;
   --color-blood: #f26d6d;
   --font-display: var(--font-fraunces), Georgia, serif;
-  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-sans: var(--font-geist-mono), ui-monospace, monospace;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 :root {
   color-scheme: dark;
+  /* Dossier palette aliases: the dossier components (identity card,
+     bubble map, transfer flow) read these short names so the dossier
+     keeps one palette even when the theme tokens change. */
+  --line: var(--color-haunt-border);
+  --surface: var(--color-haunt-panel);
+  --ink: var(--color-bone);
+  --muted: var(--color-bone-dim);
+  --accent: var(--color-spectral);
+}
+
+/* Dossier section shell: one bordered panel per dossier part, so the
+   identity card, bubble map, and transfer flow read as one file. */
+.dossier-card {
+  margin-top: 2.5rem;
+  border-radius: 1rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .dossier-card {
+    padding: 2rem;
+  }
 }
 
 body {
@@ -119,6 +143,87 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .meter-arc {
+    animation: none;
+  }
+}
+
+/* Scroll reveal: sections fade and rise into view once. Staggered
+   with an inline transition-delay from the Reveal component. */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 700ms ease,
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reveal-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Terminal run: lines appear one at a time; the current line carries
+   a blinking block cursor. */
+.terminal-line {
+  animation: terminal-in 300ms ease both;
+}
+
+@keyframes terminal-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.terminal-cursor {
+  animation: terminal-blink 1s steps(2, start) infinite;
+}
+
+@keyframes terminal-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-line {
+    animation: none;
+  }
+  .terminal-cursor {
+    animation: none;
+  }
+}
+
+/* Verdict reveal: the report materialises when the scan lands. */
+.verdict-reveal {
+  animation: verdict-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes verdict-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .verdict-reveal {
     animation: none;
   }
 }

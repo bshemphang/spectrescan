@@ -15,7 +15,7 @@ const BAND_COLOR: Record<RiskBand, string> = {
   "Resting in peace": "#7fe0b2",
   "Mildly haunted": "#a78bfa",
   Haunted: "#f0a35e",
-  "Possessed — do not touch": "#f26d6d",
+  "Possessed": "#f26d6d",
 };
 
 export default function GhostMeter({
@@ -50,7 +50,7 @@ export default function GhostMeter({
   return (
     <div className="flex flex-col items-center">
       <svg viewBox="0 0 200 115" className="w-56 sm:w-64" role="img"
-        aria-label={`Risk score ${score} out of 100 — ${band}`}>
+        aria-label={`Risk score ${score} out of 100, ${band}`}>
         {/* track */}
         <path
           d="M 20 100 A 80 80 0 0 1 180 100"

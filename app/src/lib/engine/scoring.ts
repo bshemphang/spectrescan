@@ -39,5 +39,5 @@ export function bandFor(score: number): RiskBand {
   if (score <= 12) return "Resting in peace";
   if (score <= 49) return "Mildly haunted";
   if (score <= 74) return "Haunted";
-  return "Possessed — do not touch";
+  return "Possessed";
 }

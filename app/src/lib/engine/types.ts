@@ -1,5 +1,7 @@
 // SpectreScan rules engine — types (spec: .kiro/specs/spectrescan/design.md)
 
+import type { ProxyInfo, TransferAnalysis } from "./holders";
+
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
 
 export interface Finding {
@@ -21,7 +23,7 @@ export type RiskBand =
   | "Resting in peace"
   | "Mildly haunted"
   | "Haunted"
-  | "Possessed — do not touch";
+  | "Possessed";
 
 export interface ScanResult {
   address: string;
@@ -38,13 +40,35 @@ export interface ScanResult {
   verified: boolean;
   verificationStatus: "perfect" | "partial" | "none";
   findings: Finding[];
-  explanation: string | null; // LLM verdict (null when the explainer failed)
+  explanation: string | null; // LLM verdict, or the local verdict when the explainer failed
   explainerFailed: boolean;
+  // True when the shown verdict was written from the findings by
+  // buildLocalVerdict because the LLM explainer failed. The score
+  // and findings are identical either way; the UI labels it so the
+  // reader knows no model wrote it, and offers a retry for the
+  // ghost's version.
+  explanationLocal?: boolean;
+  // True when the scanned address holds no contract code: it is a
+  // wallet (EOA), not a smart contract. No token checks ran and the
+  // score is 0, not a haunting verdict. The UI renders a dedicated
+  // "not a contract" panel instead of the meter and findings.
+  isEOA?: boolean;
+  // The address dossier: transfer analysis, proxy status, and the
+  // best-liquidity pair. Absent for wallets (no dossier) and null
+  // when the dossier reads failed outright. Everything inside it is
+  // window-scoped to the last 20,000 blocks unless labelled otherwise.
+  dossier?: DossierData | null;
   sources: {
     sourcify: boolean;
     dexscreener: boolean;
     rpc: boolean;
   };
+}
+
+export interface DossierData {
+  analysis: TransferAnalysis;
+  proxy: ProxyInfo;
+  pair: DexPair | null;
 }
 
 export interface SourceFile {
