@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --color-haunt-bg: #0c0a12;
+  --color-haunt-bg: #080610;
   --color-haunt-panel: #16121f;
   --color-haunt-panel-2: #1e1829;
   --color-haunt-border: #2c2440;
@@ -13,6 +13,7 @@
   --color-ember: #f0a35e;
   --color-blood: #f26d6d;
   --font-display: var(--font-fraunces), Georgia, serif;
+  --font-haunt: var(--font-creepster), var(--font-fraunces), Georgia, serif;
   --font-sans: var(--font-geist-mono), ui-monospace, monospace;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
@@ -27,6 +28,11 @@
   --ink: var(--color-bone);
   --muted: var(--color-bone-dim);
   --accent: var(--color-spectral);
+  /* Ghost cursor: the same friendly ghost as GhostShape, 24px, hot
+     spot in the middle. Applied to the body and to interactive
+     elements; text fields keep the native text cursor. If the data
+     URI ever fails to load, the fallbacks (auto / pointer) apply. */
+  --ghost-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C7.03 2 3 6.03 3 11v9.5l3-2.25 3 2.25 3-2.25 3 2.25 3-2.25 3 2.25V11c0-4.97-4.03-9-9-9z' fill='%23f2f0ea'/%3E%3Ccircle cx='9' cy='10' r='1.7' fill='%230c0a12'/%3E%3Ccircle cx='15' cy='10' r='1.7' fill='%230c0a12'/%3E%3C/svg%3E") 12 12;
 }
 
 /* Dossier section shell: one bordered panel per dossier part, so the
@@ -49,6 +55,137 @@ body {
   background: var(--color-haunt-bg);
   color: var(--color-bone);
   font-family: var(--font-sans);
+  cursor: var(--ghost-cursor), auto;
+}
+
+/* The ghost follows onto interactive elements too, so the cursor
+   never blinks back to a plain arrow mid-page. Text fields keep
+   the native I-beam: typing with a ghost is a joke that gets old. */
+a,
+button,
+select,
+label,
+summary,
+[role="button"] {
+  cursor: var(--ghost-cursor), pointer;
+}
+
+/* Ghost bob: one gentle 3px float per 4 second cycle, then the
+   bubble rests still for the remaining 3 seconds. The long rest
+   matters: a target that never stops moving can never be clicked
+   by automation or by anyone who needs a steady target, and the
+   hover pause alone cannot help because the hover itself waits for
+   stillness first. */
+.ghost-bob {
+  animation: ghost-bob 4s ease-in-out infinite;
+}
+
+/* The bob pauses the moment a reader hovers or focuses a bubble,
+   so the target holds still while they click or press Enter. An
+   endlessly moving click target is hard to hit and fails automated
+   stability checks for the same reason. */
+.ghost-bob:hover,
+.ghost-bob:focus-visible {
+  animation-play-state: paused;
+}
+
+@keyframes ghost-bob {
+  0% {
+    transform: translateY(0);
+  }
+  10% {
+    transform: translateY(-3px);
+  }
+  20% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* Ghost back-to-top: fixed bottom-right with safe-area insets,
+   hidden until the reader has scrolled, and hidden again while the
+   footer or the bubble-map detail panel is in the way (the component
+   drives the visibility class). The tip shows on hover and focus. */
+.ghost-to-top {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--line);
+  background: var(--color-haunt-panel);
+  box-shadow: 0 0 24px rgba(167, 139, 250, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition:
+    opacity 300ms ease,
+    transform 300ms ease;
+}
+
+.ghost-to-top-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.ghost-to-top-ghost {
+  display: flex;
+  animation: ghost-bob 4s ease-in-out infinite;
+}
+
+.ghost-to-top-spin {
+  animation: ghost-spin 0.7s ease;
+}
+
+@keyframes ghost-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ghost-to-top-tip {
+  position: absolute;
+  right: calc(100% + 0.75rem);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--color-haunt-panel);
+  padding: 0.375rem 0.625rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-bone);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+.ghost-to-top:hover .ghost-to-top-tip,
+.ghost-to-top:focus-visible .ghost-to-top-tip {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost-bob,
+  .ghost-to-top-ghost,
+  .ghost-to-top-spin {
+    animation: none;
+  }
+  .ghost-to-top {
+    transition: none;
+  }
 }
 
 /* Focus-visible safety net: every interactive element gets a visible

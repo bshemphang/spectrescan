@@ -9,6 +9,7 @@
 
 import type { DossierData } from "../lib/engine/types";
 import { formatAmount, shortAddress } from "../lib/format";
+import GhostShape from "./GhostShape";
 
 function FlowList({
   title,
@@ -73,8 +74,8 @@ export default function TransferFlow({
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--accent)]">
           Transfer flow
         </p>
-        <h2 className="font-display text-2xl leading-tight">
-          Where it transfers
+        <h2 className="font-haunt text-2xl leading-tight">
+          Where the ghosts drift
         </h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
           Every transfer in {windowLabel}, about 17 hours on BSC. In and
@@ -158,7 +159,14 @@ export default function TransferFlow({
                     {shortAddress(m.from)}
                   </span>
                   <span className="text-[var(--accent)]" aria-hidden="true">
-                    -&gt;
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      className="inline-block -translate-y-px"
+                    >
+                      <GhostShape />
+                    </svg>
                   </span>
                   <span className="truncate" title={m.to}>
                     {shortAddress(m.to)}

@@ -210,7 +210,7 @@ export default function ScanReport({
               aria-hidden
             />
             <div className="min-w-0">
-              <h1 className="font-display text-2xl font-semibold text-balance text-bone sm:text-3xl">
+              <h1 className="font-haunt text-2xl font-semibold text-balance text-bone sm:text-3xl">
                 This is a wallet, not a smart contract
               </h1>
               <p className="mt-2 font-mono text-xs break-all text-bone-dim">
@@ -253,7 +253,7 @@ export default function ScanReport({
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-spectral">
             Case file · {result.band}
           </p>
-          <h1 className="mt-2 font-display text-2xl font-semibold text-balance text-bone sm:text-3xl">
+          <h1 className="mt-2 font-haunt text-2xl font-semibold text-balance text-bone sm:text-3xl">
             {title}
           </h1>
           <p className="mt-2 font-mono text-xs break-all text-bone-dim">
@@ -396,7 +396,7 @@ export default function ScanReport({
       <section aria-labelledby="findings-heading" className="mt-10">
         <h2
           id="findings-heading"
-          className="font-display text-xl font-semibold text-bone"
+          className="font-haunt text-xl font-semibold text-bone"
         >
           What the ghost found
         </h2>

@@ -84,7 +84,7 @@ export default function IdentityCard({
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--accent)]">
           Identity card
         </p>
-        <h2 className="font-display text-2xl leading-tight">
+        <h2 className="font-haunt text-2xl leading-tight">
           What this address is
         </h2>
         <p className="mt-1 text-sm text-[var(--muted)]">

@@ -7,7 +7,7 @@
 // share is 0.
 
 import { describe, expect, it } from "vitest";
-import { pack, visibleEdges } from "../src/components/BubbleMap";
+import { ghostStops, pack, visibleEdges } from "../src/components/BubbleMap";
 
 const A = "0x1111111111111111111111111111111111111111";
 const B = "0x2222222222222222222222222222222222222222";
@@ -130,5 +130,39 @@ describe("visibleEdges", () => {
       { from: A.toUpperCase(), to: B.toLowerCase(), value: "7" },
     ]);
     expect(edges).toHaveLength(1);
+  });
+});
+
+describe("ghostStops", () => {
+  it("spaces 3 ghosts along a 270px horizontal edge, facing right", () => {
+    const stops = ghostStops(0, 0, 270, 0);
+    expect(stops).toHaveLength(3);
+    expect(stops[0]).toEqual({ x: 45, y: 0, angle: 0 });
+    expect(stops[1]).toEqual({ x: 135, y: 0, angle: 0 });
+    expect(stops[2]).toEqual({ x: 225, y: 0, angle: 0 });
+  });
+
+  it("gives 2 ghosts for a short edge and caps at 4 for a long one", () => {
+    expect(ghostStops(0, 0, 50, 0)).toHaveLength(2);
+    expect(ghostStops(0, 0, 900, 0)).toHaveLength(4);
+  });
+
+  it("faces downward on a vertical edge", () => {
+    const stops = ghostStops(0, 0, 0, 180);
+    expect(stops).toHaveLength(2);
+    for (const s of stops) expect(s.angle).toBe(90);
+    expect(stops[0].y).toBeLessThan(stops[1].y);
+  });
+
+  it("faces backwards on a leftward edge", () => {
+    const stops = ghostStops(200, 50, 20, 50);
+    expect(stops).toHaveLength(2);
+    for (const s of stops) expect(s.angle).toBe(180);
+  });
+
+  it("returns one stop for a zero-length edge", () => {
+    expect(ghostStops(10, 10, 10, 10)).toEqual([
+      { x: 10, y: 10, angle: 0 },
+    ]);
   });
 });

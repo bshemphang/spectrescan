@@ -31,6 +31,7 @@
 
 import { useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, Search, X } from "lucide-react";
+import GhostShape from "./GhostShape";
 import type { DossierData } from "../lib/engine/types";
 import { BURN_ADDRESSES } from "../lib/engine/fetchers";
 import { formatAmount, formatShare, shortAddress } from "../lib/format";
@@ -145,6 +146,41 @@ export function visibleEdges(
     edges.push({ from, to, value: m.value });
   }
   return edges;
+}
+
+// Ghost stops along an edge: small friendly ghosts spaced along
+// the transfer path, facing the direction of flow. Count scales
+// with length, 2 to 4, so short hops get 2 ghosts and long hauls
+// get 4, never more. Positions are rounded like pack() so hydration
+// cannot differ in the last bits. Pure, so it is unit-testable.
+export interface GhostStop {
+  x: number;
+  y: number;
+  angle: number;
+}
+
+export function ghostStops(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): GhostStop[] {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return [{ x: round2(x1), y: round2(y1), angle: 0 }];
+  const n = Math.min(4, Math.max(2, Math.round(len / 90)));
+  const angle = round2((Math.atan2(dy, dx) * 180) / Math.PI);
+  const stops: GhostStop[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    stops.push({
+      x: round2(x1 + dx * t),
+      y: round2(y1 + dy * t),
+      angle,
+    });
+  }
+  return stops;
 }
 
 // Round to 0.01px: pack() does float math whose last bits can
@@ -282,6 +318,15 @@ export default function BubbleMap({
     return () => window.removeEventListener("keydown", onKey);
   }, [selected]);
 
+  // The ghost back-to-top button hides while this panel is open, so
+  // it never covers the panel on a phone. It reads this attribute.
+  useEffect(() => {
+    document.body.dataset.panelOpen = selected !== null ? "true" : "false";
+    return () => {
+      document.body.dataset.panelOpen = "false";
+    };
+  }, [selected]);
+
   const analysis = dossier.analysis;
   const summary = analysis.summary;
   const windowLabel = analysis.window
@@ -292,13 +337,13 @@ export default function BubbleMap({
       <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--accent)]">
         Bubble map
       </p>
-      <h2 className="font-display text-2xl leading-tight">
+      <h2 className="font-haunt text-2xl leading-tight">
         Who moved in the last 20,000 blocks
       </h2>
       <p className="mt-1 text-sm text-[var(--muted)]">
-        Bigger bubble means more tokens. Lines show tokens moved
-        between wallets. Bubbles are sized by net movement in the
-        window; the share under each bubble is its share of total
+        Bigger bubble means more tokens. Little ghosts show tokens
+        moved between wallets. Bubbles are sized by net movement in
+        the window; the share under each bubble is its share of total
         supply. The window is {windowLabel}, about 17 hours on BSC.
       </p>
     </header>
@@ -353,6 +398,11 @@ export default function BubbleMap({
   // to a shown share of 0.0004%. Near 100, print four decimals.
   const remainderLabel =
     remainder > 99.9 ? `${remainder.toFixed(4)}%` : formatShare(remainder);
+  // Same rounding trap as the remainder: formatShare prints 1
+  // decimal over 10, so a shown 99.9% next to a 0.14% remainder
+  // summed to 100.04%. Over 99, print four decimals for both.
+  const shownLabel =
+    shownShare > 99 ? `${shownShare.toFixed(4)}%` : formatShare(shownShare);
   const active = hovered ?? selected;
   const selectedEntry = selected
     ? items.find((i) => i.address.toLowerCase() === selected.toLowerCase())
@@ -431,30 +481,54 @@ export default function BubbleMap({
         </defs>
         {edges.map((e) => {
           const line = edgeLine(e);
+          const stops = ghostStops(line.x1, line.y1, line.x2, line.y2);
           const isActive =
             active !== null &&
             (e.from.address.toLowerCase() === active.toLowerCase() ||
               e.to.address.toLowerCase() === active.toLowerCase());
           const dimmed = active !== null && !isActive;
+          // Ghosts drift along the path instead of a plain line: a
+          // faint dotted trail, 2 to 4 little ghosts facing the flow,
+          // and the arrowhead at the end so direction stays readable.
+          // Idle ghosts are faint; the active edge brightens them.
           return (
-            <line
+            <g
               key={`${e.from.address}-${e.to.address}`}
-              x1={line.x1}
-              y1={line.y1}
-              x2={line.x2}
-              y2={line.y2}
-              stroke={isActive ? "var(--accent)" : "rgba(242,240,234,0.35)"}
-              strokeWidth={isActive ? 3 : 1.5}
-              strokeOpacity={dimmed ? 0.08 : 1}
-              markerEnd={isActive ? "url(#edge-arrow-hot)" : "url(#edge-arrow)"}
+              opacity={dimmed ? 0.08 : 1}
             >
-              <title>
-                {`${shortAddress(e.from.address)} sent ${formatAmount(e.value, decimals ?? null, symbol ?? null)} to ${shortAddress(e.to.address)}`}
-              </title>
-            </line>
+              <line
+                x1={line.x1}
+                y1={line.y1}
+                x2={line.x2}
+                y2={line.y2}
+                stroke={isActive ? "var(--accent)" : "rgba(242,240,234,0.35)"}
+                strokeWidth={isActive ? 3 : 2}
+                strokeDasharray="0.1 7"
+                strokeLinecap="round"
+                markerEnd={
+                  isActive ? "url(#edge-arrow-hot)" : "url(#edge-arrow)"
+                }
+              >
+                <title>
+                  {`${shortAddress(e.from.address)} sent ${formatAmount(e.value, decimals ?? null, symbol ?? null)} to ${shortAddress(e.to.address)}`}
+                </title>
+              </line>
+              {stops.map((s, i) => (
+                <g
+                  key={i}
+                  transform={`translate(${s.x} ${s.y}) rotate(${s.angle}) scale(0.75) translate(-12 -12)`}
+                  style={{
+                    color: isActive ? "#c4b5fd" : "#f2f0ea",
+                    opacity: isActive ? 0.95 : 0.6,
+                  }}
+                >
+                  <GhostShape />
+                </g>
+              ))}
+            </g>
           );
         })}
-        {bubbles.map((b) => {
+        {bubbles.map((b, idx) => {
           const style = KIND_STYLE[b.kind];
           const isSelected =
             selected !== null &&
@@ -485,10 +559,14 @@ export default function BubbleMap({
               tabIndex={0}
               role="button"
               aria-label={ariaName}
+              className="ghost-bob"
               style={{
-                cursor: "pointer",
                 opacity: isDimmed ? 0.35 : 1,
                 outline: "none",
+                // Staggered bob so the orbs drift out of step.
+                // Deterministic from the index, so server and client
+                // render the same delay and hydration stays clean.
+                animationDelay: `${(idx % 6) * 0.6}s`,
               }}
               onClick={() => {
                 setSelected(isSelected ? null : b.address);
@@ -507,6 +585,15 @@ export default function BubbleMap({
               onBlur={() => setHovered(null)}
             >
               <title>{ariaName}</title>
+              {/* Soft halo: the ghost-orb glow, low opacity so it
+                  never fights the bubble itself. */}
+              <circle
+                cx={b.x}
+                cy={b.y}
+                r={b.r + 7}
+                fill={style.fill}
+                opacity={0.1}
+              />
               {style.ring && (
                 <circle
                   cx={b.x}
@@ -753,12 +840,12 @@ export default function BubbleMap({
       )}
 
       <p className="mt-3 font-mono text-xs leading-relaxed text-[var(--muted)]">
-        Top {items.length} holders shown, {formatShare(shownShare)} of
-        supply. The remaining {remainderLabel} did not move in the
-        scanned window or sits with smaller holders. This is movement,
-        not lifetime holdings: an address that bought before the window
-        and held still shows nothing here. Lines show the biggest moves
-        between the wallets above. A line is movement, not proof of
+        Top {items.length} holders shown, {shownLabel} of supply. The
+        remaining {remainderLabel} did not move in the scanned window
+        or sits with smaller holders. This is movement, not lifetime
+        holdings: an address that bought before the window and held
+        still shows nothing here. Little ghosts show the biggest moves
+        between the wallets above. A ghost is movement, not proof of
         anything wrong.
       </p>
     </section>

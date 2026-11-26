@@ -1,12 +1,23 @@
 import type { Metadata } from "next";
-import { Fraunces, Geist_Mono } from "next/font/google";
+import { Creepster, Fraunces, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import EffectsCanvas from "@/components/EffectsCanvas";
+import GhostToTop from "@/components/GhostToTop";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
   weight: ["500", "600", "700"],
+});
+
+// Halloween display face for the dossier headings. Creepster only
+// ships weight 400, so it is used for short headings at 24px and
+// up, never for body text. The dossier page then uses two families
+// (Geist Mono plus Creepster); home and how-it-works keep Fraunces.
+const creepster = Creepster({
+  variable: "--font-creepster",
+  subsets: ["latin"],
+  weight: "400",
 });
 
 const geistMono = Geist_Mono({
@@ -30,7 +41,7 @@ export default function RootLayout(props: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${creepster.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="haunt-bg min-h-full">
         <a
@@ -49,6 +60,7 @@ export default function RootLayout(props: LayoutProps<"/">) {
           <div className="atmosphere-grain" />
         </div>
         {props.children}
+        <GhostToTop />
       </body>
     </html>
   );
