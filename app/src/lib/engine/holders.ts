@@ -1,7 +1,8 @@
-// SpectreScan — transfer analysis for the address dossier (spec:
-// the dossier reads the same Transfer logs the holder check uses).
-// One log scan feeds everything: the holder-concentration finding,
-// the bubble map, the transfer flow, first seen, and first minter.
+// SpectreScan — transfer analysis for the address dossier.
+// One log scan feeds the dossier: the bubble map, the transfer
+// flow, first seen, and first minter. The holder-concentration
+// finding (R8) is a separate pair-share proxy and does not use
+// these logs.
 // The scan covers only the last 20,000 blocks (about 17 hours on
 // BSC). Every number built from it is window-scoped, and the UI
 // labels it as such. Net balances inside the window are MOVEMENT,
@@ -80,10 +81,8 @@ export interface TransferSummary {
   firstMinter: string | null; // recipient of the earliest mint-from-zero in the window
   holders: HolderEntry[]; // top 12 by positive net balance
   // Top 10 by positive net balance EXCLUDING burn addresses, the
-  // token contract itself, and the pair: exactly the set the R8
-  // holder finding scores on. Kept separate so the finding can be
-  // computed from the summary without re-scanning or shipping the
-  // whole balance map.
+  // token contract itself, and the pair. The R8 finding is a
+  // separate pair-share proxy and does not score on these balances.
   topHoldersExcluding: HolderEntry[];
   hadValidTransfers: boolean; // at least one log parsed into from/to/value
   topHolderShare: number | null;
@@ -129,8 +128,7 @@ function addrOf(topic: string | undefined): string | null {
 // it is unit-testable with fabricated logs. A log is a mint when it
 // comes from the zero address, a burn when it goes to a burn address.
 // `excluded` holds the lowercased burn, token, and pair addresses:
-// the R8 finding scores on balances without them, while the dossier
-// map shows them.
+// the top-10 set excludes them, while the dossier map shows them.
 export function summarizeLogs(
   logs: TransferLog[],
   totalSupply: bigint | null,
@@ -247,10 +245,9 @@ export function summarizeLogs(
   };
 }
 
-// One log scan for the whole dossier. Mirrors the old holder scan:
-// same window, same chunks, same 15s deadline. If the deadline or
-// the event cap cuts it short, the analysis is marked incomplete and
-// the holder finding falls back exactly as it did before.
+// One log scan for the whole dossier: same window, same chunks,
+// same 25s deadline. If the deadline or the event cap cuts it
+// short, the analysis is marked incomplete.
 export async function analyzeTransfers(
   tokenAddress: string,
   totalSupply: bigint | null,

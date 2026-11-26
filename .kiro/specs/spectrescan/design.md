@@ -31,6 +31,11 @@
 │         scanContract (reuses the same engine code)             │
 │  configured in .kiro/settings/mcp.json                         │
 └────────────────────────────────────────────────────────────────┘
+
+The diagram omits the modules added after the spec: the dossier log scan
+(holders.ts), the EOA branch, the /registry and /how-it-works pages, and
+the SpectralCore / EffectsCanvas / HeroVideo presentation layer. See the
+requirements addendum (2026-11-26).
 ```
 
 The engine is a pure TypeScript library with no UI or framework dependencies,
@@ -40,22 +45,35 @@ the Frankenstein point: one deterministic brain, two bodies.
 ## Data flow (one scan)
 
 1. `POST /api/scan { address }` — validate address format (REQ-1).
+   EOA check first: `eth_getCode` returning 0x means a wallet, not a
+   contract — score 0, one info finding, no token checks, no explainer.
 2. Fetch in parallel:
    - Sourcify `v2/contract/56/{address}?fields=abi,sources` (REQ-2).
    - Dexscreener `tokens/v1/bsc/{address}` (REQ-3 R9).
    - RPC `eth_call`: `name()`, `symbol()`, `decimals()`, `totalSupply()`,
-     `owner()` (if present), pair LP `balanceOf(burn addresses)` (R5–R7).
-3. Run source checks (R2–R4) against the verified source text, recording
+     `owner()` (if present), pair LP `balanceOf(burn addresses)` (R5–R7),
+     `eth_getCode` (EOA + proxy), `eth_getStorageAt` (proxy slots).
+3. Run the dossier log scan (`analyzeTransfers`): Transfer logs for the
+   last 20,000 blocks in 5,000-block chunks against PublicNode, up to
+   three attempts per chunk, 25s deadline, 50,000-event cap. Feeds the
+   bubble map, transfer flow, first seen, and first minter — never the
+   R8 score.
+4. Run source checks (R2–R4) against the verified source text, recording
    file + line numbers for every hit.
-4. Run the pair-share proxy (R8): share of total supply sitting in the
+5. Run the pair-share proxy (R8): share of total supply sitting in the
    main DEX pair (see below); on missing pair data → "unknown".
-5. Score findings deterministically (REQ-4).
-6. LLM explainer (REQ-5): one prompt with the findings JSON + source excerpts;
+6. Score findings deterministically (REQ-4).
+7. LLM explainer (REQ-5): one prompt with the findings JSON + source excerpts;
    response is stored verbatim and displayed as "the ghost's verdict".
-7. Respond `{ address, score, band, findings, explanation, meta }`.
+   On failure the route writes a local verdict from the findings instead.
+8. Respond with the full `ScanResult`: `{ address, chainId, scannedAt,
+   score, band, token, verified, verificationStatus, findings,
+   explanation, explainerFailed, explanationLocal, sources, isEOA,
+   dossier }`.
 
-In-memory cache (5 min per address) avoids re-scanning the same contract
-during judging.
+In-memory cache (5 min per address, 200 entries max, oldest first out)
+avoids re-scanning the same contract during judging. Rate limit: 60 scans
+per rolling minute (429 + `Retry-After: 60`).
 
 ## Rules engine detail
 
@@ -119,13 +137,16 @@ means different things under different ownership:
   be checked from public data, so the finding reports the lock status as
   unknown (medium) and warns that providers can withdraw at any time —
   never as a clean bill of health.
-- **Pair-share proxy (R8):** public BSC RPCs refuse `eth_getLogs`
-  (verified 2026-11-08: dataseed1/2 return -32005 "limit exceeded" even for
-  100-block ranges; publicnode rate-limits), so a real top-holder scan is
-  not possible from public data. The check falls back to a pair-share proxy
-  — the share of total supply sitting in the main pair. Pair share < 10% →
-  medium ("most supply sits outside the pool"). The finding says it is a
-  proxy, never a holder scan.
+- **Pair-share proxy (R8):** the score uses the share of total supply
+  sitting in the main pair, not log data — by design, not by missing
+  data. The Binance dataseeds still refuse `eth_getLogs` (verified
+  2026-11-08: dataseed1/2 return -32005 "limit exceeded" even for
+  100-block ranges), but PublicNode answers it, so the dossier does a
+  real windowed top-holder scan from Transfer logs. A 20,000-block
+  window of movement is still not a holder list, so scoring it as one
+  would misread large tokens. Pair share < 10% → medium ("most supply
+  sits outside the pool"). The finding says it is a proxy, never a
+  holder scan.
 
 ### Source-pattern checks (R2–R4)
 
@@ -169,27 +190,36 @@ If the source is unavailable, R2–R4 report "unknown" instead of guessing.
 
 ## LLM explainer
 
-- Endpoint: `https://text.pollinations.ai/{prompt}` (GET, no key).
-- Model: default (openai-fast class). Temperature low via prompt wording
-  ("be factual, be brief").
+- Endpoint: `https://text.pollinations.ai/` (POST, OpenAI-compatible JSON,
+  no key). POST is used instead of the GET endpoint: GET truncates long
+  prompts and is slow to time out.
+- Model: "openai". Temperature 0.2, `reasoning_effort: "low"`. One
+  attempt, 10s timeout.
 - Prompt includes: the findings JSON (severity, title, detail, evidence),
   the score and band, and the hard instruction block from steering
   (`never hallucinate a vulnerability, cite file and line only for
   source-based findings and state the measured on-chain value for
   on-chain findings, never call anything "audited"`).
-- If the LLM call fails, the UI falls back to the raw findings list with a
-  note — the scan result never depends on the LLM.
+- If the LLM call fails, the route writes a local verdict from the
+  findings (buildLocalVerdict), labelled model-free in the UI, with a
+  Retry button — the scan result never depends on the LLM.
 
 ## UI
 
 - Dark haunted-house theme: near-black background (#0c0a12), bone-white text,
   single accent: spectral violet (#a78bfa). Fraunces display font for
-  headings, Inter for body (self-hosted via next/font).
-- Home: big address input, "Scan" button, sample-contract buttons
-  (SELO — haunted honeypot; AGIO — hidden owner; CAKE — clean).
-- Result: animated ghost-meter dial (SVG arc, 0–100), band label, verdict
-  paragraph (LLM), findings cards grouped by severity, evidence lines in
-  monospace, "Scan another" action.
+  headings, Geist Mono for body and code (self-hosted via next/font).
+- Home: the Seance, a four-act scroll journey (scan, known hauntings,
+  autopsy, lab) with a Three.js spectral core, a looping hero mist video,
+  and an effects canvas. Act One is the scan form with a big address input
+  and a "Scan" button; Act Two files the three known hauntings as case
+  files (SELO — haunted honeypot; AGIO — hidden owner; CAKE — clean).
+- Result: the address dossier — identity card, bubble map, transfer flow,
+  timeline — plus the animated ghost-meter dial (SVG arc, 0–100), band
+  label, verdict paragraph (LLM, or the local verdict labelled
+  model-free), findings cards grouped by severity, evidence lines in
+  monospace, "Scan another" action. A wallet address shows a dedicated
+  wallet panel with no score.
 - Lucide icons only; no emoji. Mobile layout stacks the meter above findings.
 
 ## MCP server
@@ -223,12 +253,20 @@ If the source is unavailable, R2–R4 report "unknown" instead of guessing.
   hooks/verify-on-save.json
   settings/mcp.json
 app/                          # Next.js app
-  src/app/                    # pages + /api/scan route
+  src/app/                    # pages (/scan/[address], /registry,
+                              # /how-it-works) + /api/scan route
   src/lib/engine/             # rules engine (pure TS)
-  src/lib/explainer.ts        # LLM explainer
-  src/components/             # GhostMeter, FindingCard, ScanForm
-  src/lib/fixtures.ts         # sample contracts
+  src/lib/engine/fixtures.ts  # sample contracts
+  src/lib/engine/holders.ts   # dossier Transfer-log scan
+  src/lib/explainer.ts        # LLM explainer + local verdict
+  src/lib/cases.ts            # static case files (SELO, AGIO, CAKE)
+  src/components/             # GhostMeter, FindingCard, ScanReport,
+                              # BubbleMap, TransferFlow, IdentityCard,
+                              # SpectralCore, EffectsCanvas, HeroVideo,
+                              # ScoreWorkbench, CaseFile, Reveal,
+                              # RecentScans, SiteHeader, SiteFooter,
+                              # SoundToggle, TerminalRun, ScrollSpine
+app/tests/                    # vitest + fast-check property tests
 mcp-server/                   # MCP server package
-tests/                        # vitest + fast-check property tests
-LICENSE  README.md  KIRO_USAGE.md  VIDEO_SCRIPT.md
+LICENSE  README.md  KIRO_USAGE.md
 ```

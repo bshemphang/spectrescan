@@ -55,10 +55,14 @@ The engine MUST run these checks (each returns severity + evidence + line refs):
 - R6. Renounce status: owner() == 0x0 means renounced (good).
 - R7. LP burn share: share of the main pair's LP tokens held by burn addresses
   (0x000…dEaD / 0x0) via eth_call balanceOf.
-- R8. Pair-share proxy (in place of a top-holder scan): the share of total
-  supply sitting in the main DEX pair, used because public BSC RPCs refuse
-  `eth_getLogs`. Labelled as a proxy wherever it is shown, never as a
-  holder scan. (Best effort; "unknown" if the pair data is missing.)
+- R8. Pair-share proxy (not a top-holder scan): the share of total
+  supply sitting in the main DEX pair. The proxy is by design, not by
+  missing data: a 20,000-block window of movement is not a holder list,
+  and scoring it as one would misread large tokens. (The dossier does
+  a real Transfer-log scan for its bubble map; see the 2026-11-26
+  addendum below. The R8 score itself never uses log data.) Labelled as
+  a proxy wherever it is shown, never as a holder scan. (Best effort;
+  "unknown" if the pair data is missing.)
 - R9. Liquidity & pair health (Dexscreener): liquidity USD, pair age, 24h
   volume, buy/sell balance.
 - WHEN any data source fails THEN that check reports "unknown" and the scan
@@ -87,9 +91,13 @@ The engine MUST run these checks (each returns severity + evidence + line refs):
 ### REQ-6 — Haunted UI
 - The result page shows: the ghost meter (risk score dial), the band label,
   each finding as a card (severity, title, plain explanation, evidence with
-  line refs), the LLM summary, and a "scan again" action.
-- The home page offers one-click sample scans (a known haunted contract and a
-  known clean one) so judges can see the app work in seconds.
+  line refs), the LLM summary, the address dossier (identity card, bubble
+  map from Transfer logs, transfer flow, timeline), and a "scan again"
+  action. A wallet address shows a dedicated wallet panel with no score
+  instead of the meter and findings.
+- The home page offers one-click sample scans (three filed cases: SELO and
+  AGIO, both haunted, and CAKE, clean) so judges can see the app work in
+  seconds.
 - No emoji in the UI; Lucide icons only. One accent colour. A visible
   disclaimer: "SpectreScan is not an audit. Never invest more than you can
   afford to lose."
@@ -115,9 +123,13 @@ The engine MUST run these checks (each returns severity + evidence + line refs):
 ## Non-functional requirements
 
 - NFR-1: No API keys anywhere. All data sources are public and keyless.
-- NFR-2: A scan completes in under 30 seconds on a normal connection.
+- NFR-2: A scan completes inside the 60-second host budget on a normal
+  connection. Typical scans take 12–36 seconds, dominated by the
+  25-second holder-scan deadline when PublicNode rate-limits; measured
+  2026-11-26: SELO 36s, AGIO 30s, CAKE 12s (engine only), SELO 34.5s end
+  to end.
 - NFR-3: No wallet connection, no sign-in, no user data stored. Scan history
-  lives only in the browser session.
+  lives only in the browser (localStorage), never on a server.
 - NFR-4: The repo is public, MIT-licensed, contains `/.kiro` at the root,
   and `/.kiro` is NOT in `.gitignore`.
 - NFR-5: All code is new, written after Oct 30, 2026. Standard frameworks
@@ -125,6 +137,45 @@ The engine MUST run these checks (each returns severity + evidence + line refs):
 
 ## Out of scope
 
-- Multi-chain scanning (BSC only for the demo; the engine is chain-parameterised).
+- Multi-chain scanning (BSC only for the demo; the engine is hardcoded to
+  BSC chain 56).
 - Automatic trading, buying, or selling.
 - Storing scans server-side or user accounts.
+
+## Addendum — Seance redesign + address dossier (2026-11-26)
+
+Written after the original spec, when the product grew past it. The
+original REQ-1…REQ-9 still hold; this addendum records what was added
+and what changed. It does not renumber the requirements.
+
+- **Address dossier.** Every scan now returns a dossier alongside the
+  score: an identity card (wallet or contract, token metadata, verified
+  source, proxy status, token age, first minter, pair — every row with
+  its source, "unknown" where the chain cannot say), a bubble map of
+  the top 12 movers from real Transfer logs in the last 20,000 blocks,
+  a transfer flow (total moved, transfer count, top senders/receivers,
+  biggest moves), and a timeline from first seen to scanned. The log
+  scan runs in 5,000-block chunks against PublicNode (the only free
+  endpoint that answers `eth_getLogs`), up to three attempts per chunk,
+  25-second deadline, 50,000-event cap. A cut-short scan is labelled
+  partial; zero logs read means "unavailable", never invented holders.
+  The dossier never feeds the R8 score, which stays the pair-share
+  proxy by design.
+- **EOA detection.** An address with no contract code (`eth_getCode`
+  returns 0x) is a wallet, not a token: score 0, one info finding, no
+  token checks, no explainer, no recent-scan save, and the UI renders
+  a dedicated wallet panel.
+- **The Seance.** The home page is a four-act scroll journey (scan,
+  known hauntings, autopsy, lab) with a Three.js spectral core, a
+  looping hero mist video, and an effects canvas. New pages:
+  `/registry` (scan history from localStorage plus the three fixtures,
+  never invented usage) and `/how-it-works` (the nine checks, the
+  scoring table, the honest limits).
+- **API limits.** The scan route caches for 5 minutes (200 entries
+  max, oldest first out) and rate-limits to 60 scans per rolling
+  minute (429 + `Retry-After: 60`).
+- **Explainer fallback.** When the LLM fails, the route writes a local
+  verdict from the findings, labelled model-free in the UI, with a
+  Retry button. The UI never falls back to the raw findings list.
+- **Demo video.** A < 3-minute demo video (1:47, 1280x720) was recorded
+  from the live redesign. The video script is kept outside the repo.

@@ -185,7 +185,7 @@ export default function ScanReport({
         className="mt-0.5 shrink-0"
         aria-hidden
       />
-      SpectreScan is a public-signal checker, not an audit. It reads the
+      SpectreScan is not an audit. Never invest more than you can afford to lose. It reads the
       verified source and public on-chain data; it cannot see hidden
       behaviour, and it never calls a contract safe.
     </p>

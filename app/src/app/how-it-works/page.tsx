@@ -65,8 +65,8 @@ const CHECKS: Array<{
   {
     id: "R8",
     name: "Holder concentration",
-    what: "Scans Transfer logs for the last 20,000 blocks, about 17 hours on BSC, and adds up the top 10 holders. Public BSC RPCs often refuse log scans; when that happens the pair-share proxy is used instead and the finding says so in plain words.",
-    evidence: "The measured top-10 share, or the pair share with the proxy label.",
+    what: "Reads the share of total supply sitting in the main DEX pair, from Dexscreener pair data. This is a pair-share proxy, not a full holder list. The address dossier separately scans Transfer logs for the last 20,000 blocks, about 17 hours on BSC, and shows the real movement.",
+    evidence: "The pair share with the proxy label.",
   },
   {
     id: "R9",
@@ -247,7 +247,7 @@ export default function HowItWorksPage() {
             </li>
           </ul>
           <p className="mt-6 text-sm leading-relaxed text-bone-dim">
-            SpectreScan is a public-signal checker, not an audit. It
+            SpectreScan is not an audit. Never invest more than you can afford to lose. It
             never calls a contract safe.{" "}
             <Link
               href="/"

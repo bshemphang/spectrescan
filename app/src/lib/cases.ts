@@ -69,7 +69,7 @@ export const CASE_FILES: CaseFileData[] = [
         "R8",
         "info",
         "Holder distribution could not be read",
-        ["eth_getLogs refused by public RPCs", "dexscreener: no pairs"],
+        ["dexscreener: no pairs"],
       ),
       f(
         "no-pair",
@@ -113,7 +113,7 @@ export const CASE_FILES: CaseFileData[] = [
         "R8",
         "info",
         "Holder distribution could not be read",
-        ["eth_getLogs refused by public RPCs", "dexscreener: no pairs"],
+        ["dexscreener: no pairs"],
       ),
       f("no-pair", "R9", "medium", "No trading pair, no liquidity", [
         "dexscreener: no pairs",

@@ -6,9 +6,11 @@ happen.
 
 ## What Kiro is in this project
 
-Kiro CLI 3.1.0 is installed in the build environment
-(`curl -fsSL https://cli.kiro.dev/install | bash`, verified with
-`kiro-cli --version`). The project is structured the Kiro way: specs first,
+Kiro CLI is NOT installed in this build environment (no `kiro-cli`
+binary; `~/.kiro/settings/cli.json` is empty). The `.kiro` artifacts
+below were authored as files; installing the CLI and signing in are
+entrant steps, same as the sign-in noted below. The project is
+structured the Kiro way: specs first,
 then implementation from the specs, with steering, hooks, and an MCP server
 all living in `/.kiro` at the repo root. The `/.kiro` directory is committed
 and is NOT in `.gitignore`.
@@ -25,7 +27,11 @@ The spec was written **before any implementation code**:
   live testing proved the first design wrong in three places — see
   "What the build taught us" below.
 - `.kiro/specs/spectrescan/tasks.md` — the phased task list, checked off as
-  work landed. Every implementation file maps to a task and a requirement.
+  work landed. Every implementation file from the original build maps to a
+  task and a requirement. The Seance redesign and address dossier (holder
+  log scan, dossier components, SpectralCore, /registry, /how-it-works,
+  EOA detection) landed after the spec was written and are recorded in
+  tasks.md Phase 8, not in the original task list.
 
 ## Steering (`.kiro/steering/`)
 
@@ -59,8 +65,9 @@ A real MCP server built for this project, registered in
 `.kiro/settings/mcp.json` so Kiro can call it. It exposes four tools —
 `getContractSource`, `getTokenInfo`, `getPairInfo`, `scanContract` — and all
 four were smoke-tested over stdio (`mcp-server/smoke-test.mjs`): CAKE token
-facts, CAKE pair data, AGIO verified source, and a full SELO scan returning
-score 55 / Haunted. The server imports the exact same engine code as the web
+facts, CAKE pair data, AGIO verified source, and a full SELO scan (logged,
+no score asserted; the live fixture tests assert SELO at 100 /
+Possessed). The server imports the exact same engine code as the web
 app, so Kiro and the UI can never disagree.
 
 ## Testing (the Kiro "trust but verify" habit)
@@ -72,7 +79,7 @@ app, so Kiro and the UI can never disagree.
   exact line numbers.
 - **Live fixture tests**: SELO, AGIO, and CAKE scanned against real
   Sourcify/RPC/Dexscreener data, asserting their bands.
-- All 14 tests pass; `tsc --noEmit` is clean; `next build` succeeds.
+- All 93 tests pass (8 files); `tsc --noEmit` is clean; `next build` succeeds.
 
 ## What the build taught us (spec updated, not hidden)
 
@@ -84,12 +91,12 @@ the engine — not in the tests:
    mint is governed by the MasterChef contract, whose source is public.
    Fix: context-aware severity — minting governed by a verified contract
    scores lower; a verified owner contract scores LOW, an unverified one
-   HIGH. CAKE now scores 34 (Mildly haunted).
+   HIGH. CAKE now scores 46 (Mildly haunted).
 2. **SELO scored 17 (Resting) on the first run.** Its source has no
    blacklist/mint/pause — but its constructor hands 100% of supply to the
    deployer and it has no trading pair. Fix: a deployer-mint pattern check
    plus a combination rule (deployer-minted supply + no pair → HIGH).
-   SELO now scores 55 (Haunted).
+   SELO now scores 100 (Possessed).
 3. **Public BSC RPCs refuse `eth_getLogs`** (verified: -32005 "limit
    exceeded" even for 100-block ranges). Fix: the holder check falls back
    to a pair-share proxy instead of failing or guessing.

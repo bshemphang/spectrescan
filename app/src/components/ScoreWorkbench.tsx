@@ -40,10 +40,10 @@ const ROWS: Row[] = [
     note: "The controller hides behind another layer",
   },
   {
-    id: "holders-concentrated",
-    severity: "high",
-    title: "Top 10 holders own 90% or more",
-    note: "Measured from Transfer logs, last 20,000 blocks",
+    id: "holders-outside-pool",
+    severity: "medium",
+    title: "Only a small share of supply sits in the pool",
+    note: "Pair-share proxy, Dexscreener pair data",
   },
   {
     id: "unverified",

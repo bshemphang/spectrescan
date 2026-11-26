@@ -4,7 +4,7 @@ Applies to all UI and copy in this project.
 
 - One accent colour only: spectral violet (#a78bfa). Background near-black
   (#0c0a12), text bone-white (#f2f0ea).
-- Typography: Fraunces for display headings, Inter for body. No more than
+- Typography: Fraunces for display headings, Geist Mono for body and code. No more than
   two font families.
 - No emoji anywhere in the UI. Use Lucide icons only.
 - Copy must be specific and real: name the actual check, the actual value,

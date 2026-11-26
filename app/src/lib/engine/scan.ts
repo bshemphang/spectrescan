@@ -122,10 +122,11 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
   if (sourcify) sources.sourcify = true;
   if (pairs) sources.dexscreener = true;
 
-  // One Transfer-log scan feeds the R8 finding and the whole dossier
-  // (bubble map, flow, first seen, first minter). The proxy check
-  // reuses the eth_getCode result from the EOA check above, so no
-  // second code read is needed.
+  // One Transfer-log scan feeds the whole dossier (bubble map,
+  // flow, first seen, first minter). The R8 holder-concentration
+  // finding is a separate pair-share proxy and does not use these
+  // logs. The proxy check reuses the eth_getCode result from the
+  // EOA check above, so no second code read is needed.
   const [analysis, proxy] = await Promise.all([
     analyzeTransfers(address, tokenMeta.totalSupply, pairs),
     checkProxy(address, code),

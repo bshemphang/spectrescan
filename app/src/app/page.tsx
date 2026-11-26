@@ -66,7 +66,7 @@ const RULES: Array<{ id: string; name: string; detail: string }> = [
   {
     id: "R8",
     name: "Holder concentration",
-    detail: "Top holders from Transfer logs, last 20,000 blocks, about 17 hours on BSC. When the public RPC refuses logs, the pair-share proxy is used and labelled as one.",
+    detail: "The pair-share proxy: the share of total supply sitting in the main DEX pair, read from Dexscreener pair data. It is an estimate, not a holder list. The address dossier separately shows real Transfer logs for the last 20,000 blocks, about 17 hours on BSC.",
   },
   {
     id: "R9",

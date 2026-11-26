@@ -7,7 +7,7 @@ export default function SiteFooter() {
   return (
     <footer className="border-t border-white/8 py-6 text-xs leading-relaxed text-bone-dim">
       <p>
-        SpectreScan is a public-signal checker, not an audit. It reads
+        SpectreScan is not an audit. Never invest more than you can afford to lose. It reads
         the verified source and public on-chain data; it cannot see
         hidden behaviour, and it never calls a contract safe. Sources:
         Sourcify (verified source), public BSC RPCs (on-chain state),

@@ -13,7 +13,7 @@ import type { ScanResult } from "@/lib/engine/types";
 // NOTE: no `runtime` / `dynamic` / `maxDuration` segment configs here —
 // this Next.js 16 scaffold enables `cacheComponents`, which forbids them.
 // A POST handler is dynamic by default, and the scan enforces its own
-// internal timeouts (per-call fetch timeouts + a 15s holder-scan budget),
+// internal timeouts (per-call fetch timeouts + a 25s holder-scan budget),
 // so the route stays within normal serverless limits on hosts that allow
 // ~60s functions (Render free tier; see README for deployment notes).
 

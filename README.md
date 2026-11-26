@@ -64,8 +64,8 @@ Bands: 0–12 "Resting in peace" · 13–49 "Mildly haunted" · 50–74 "Haunted
 Context matters: a mint function is HIGH when the owner is a wallet, but
 MEDIUM when minting is governed by a verified contract (public code), and
 lower again with a visible supply cap. An owner that is a verified contract
-scores LOW; an unverified owner contract scores HIGH. If the deployer minted
-the whole supply AND there is no trading pair, the no-pair finding upgrades
+scores LOW; an unverified owner contract scores HIGH. If the deployer minted the whole supply (or almost all of it, 90% or
+more) AND there is no trading pair, the no-pair finding upgrades
 to HIGH. Full rules: `.kiro/specs/spectrescan/design.md`.
 
 ## Run it
@@ -102,7 +102,8 @@ Registered in `.kiro/settings/mcp.json`. Smoke-tested over stdio
 ## Deployment
 
 The app is a standard Next.js app. It needs a host that allows ~60s server
-functions (a scan can take up to ~30s when RPCs are slow) Render's free
+functions (a slow scan can take ~35s end to end: the 25s holder-scan
+deadline plus a 10s explainer timeout) Render's free
 tier works; Vercel Hobby's 10s function limit does not. Set no environment
 variables.
 
@@ -116,7 +117,7 @@ variables.
   settings/mcp.json    MCP server registration
 app/                   Next.js 16 app (engine, API route, UI, tests)
 mcp-server/            MCP server (same engine, stdio transport)
-LICENSE  README.md  KIRO_USAGE.md  VIDEO_SCRIPT.md
+LICENSE  README.md  KIRO_USAGE.md
 ```
 
 ## Data sources (all public, all keyless)
@@ -127,8 +128,8 @@ LICENSE  README.md  KIRO_USAGE.md  VIDEO_SCRIPT.md
   (proxy slots), and `eth_getLogs` for the dossier. Four endpoints with
   fallback and retry; Binance dataseeds refuse `eth_getLogs` outright
   (verified 2026-11-08 and again 2026-11-26), so the log scan tries
-  PublicNode first, in 5,000-block chunks with pacing and one retry per
-  chunk. When the log read fails, the dossier says data unavailable and
+  PublicNode first, in 5,000-block chunks with pacing and up to three
+  attempts per chunk (1.5s then 3s pauses). When the log read fails, the dossier says data unavailable and
   never invents holders. The R8 holder check stays a pair-share proxy
   per the design doc: a 20,000-block window of movement is not a holder
   list, and scoring it as one would misread large tokens.
