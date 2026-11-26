@@ -10,6 +10,11 @@ export interface Finding {
   detail: string; // plain English, one or two sentences
   evidence: string[]; // file:line refs or on-chain values
   weight: number; // contribution to the risk score (fixed per severity)
+  // True when this finding describes a majority (90%+) rather than the
+  // whole supply — set only by the deployer-mint check. The scan
+  // orchestrator reads this flag for the no-pair combination rule; it
+  // never keys off the title text.
+  majority?: boolean;
 }
 
 export type RiskBand =

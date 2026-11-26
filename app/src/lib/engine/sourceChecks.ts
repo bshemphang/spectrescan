@@ -454,6 +454,7 @@ export function deployerMintCheck(sources: SourceFile[]): Finding | null {
             : `The ${label} hands the whole token supply to the deployer's wallet. One address starts out holding 100% of the supply and can sell it all at any time.`,
           evidence: [`${file.path}:${hit.line}`],
           weight: weightFor("high"),
+          majority: hit.majority,
         };
       }
     }
@@ -478,6 +479,18 @@ function checkDeployerMintBody(
     /(?:total_?|totalSupply|_total|supply)\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\b/g,
   )) {
     supplyVars.add(m[1]);
+  }
+  // Also capture a supply variable assigned a numeric literal in this
+  // body (`supply = 1000000`): the variable still names the deployer's
+  // supply even though the right-hand side is not another variable, so
+  // a later `_mint(msg.sender, supply)` must still count. The left-hand
+  // alternation matches the one above (`total`, `_total`, `total_`
+  // included) — those names are exactly the ones the file-level set
+  // does not cover.
+  for (const m of body.matchAll(
+    /\b(?:total_?|totalSupply|_total|supply|TOTAL_SUPPLY)\b\s*=\s*[0-9]/g,
+  )) {
+    supplyVars.add(m[0].split(/\s*=/)[0].trim());
   }
 
   // (a) A supply variable handed to msg.sender's balance or minted to it.
@@ -536,10 +549,12 @@ function checkDeployerMintBody(
   // (d) A mint to msg.sender of a large fraction of the supply (>= 90%):
   // `totalSupply * 99 / 100`, `supply * 95 / 100`, or `totalSupply - fee`.
   // The deployer still starts out holding almost everything; the rest
-  // is usually a fee address, not distribution.
+  // is usually a fee address, not distribution. Parentheses are allowed
+  // around the fraction (`(totalSupply * 90) / 100`, or the whole
+  // expression wrapped), and spacing is optional (`totalSupply*9/10`).
   for (const v of supplyVars) {
     const frac = new RegExp(
-      `_mint\\(msg\\.sender,\\s*${v}\\s*\\*\\s*(\\d+)\\s*/\\s*(\\d+)`,
+      `_mint\\(msg\\.sender,\\s*\\(?\\s*${v}\\s*\\*\\s*(\\d+)\\s*\\)?\\s*/\\s*(\\d+)\\s*\\)?`,
     );
     const fm = body.match(frac);
     if (fm) {
@@ -553,7 +568,7 @@ function checkDeployerMintBody(
     const mm = body.match(minus);
     if (mm) return { line: lineOf(mm.index!), majority: true };
     const fracAssign = new RegExp(
-      `balances?_?\\s*\\[\\s*msg\\.sender\\s*\\]\\s*=\\s*${v}\\s*\\*\\s*(\\d+)\\s*/\\s*(\\d+)`,
+      `balances?_?\\s*\\[\\s*msg\\.sender\\s*\\]\\s*=\\s*\\(?\\s*${v}\\s*\\*\\s*(\\d+)\\s*\\)?\\s*/\\s*(\\d+)\\s*\\)?`,
     );
     const fa = body.match(fracAssign);
     if (fa) {

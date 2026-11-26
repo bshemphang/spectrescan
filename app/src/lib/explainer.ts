@@ -76,10 +76,34 @@ export async function explainScan(result: ScanResult): Promise<string | null> {
     }
     if (!text) return null;
     // Never let the explainer smuggle in banned reassurance.
-    if (/\baudited\b|\b100% safe\b|\bguaranteed safe\b/i.test(text)) return null;
+    if (hasBannedReassurance(text)) return null;
     return text;
   } catch {
     // Give up and let the UI fall back to findings.
     return null;
   }
+}
+
+// Phrases that reassure the reader the token is safe. A correct verdict
+// says the opposite ("this is not safe", "do not touch"), so the bare
+// words "safe" and "secure" are NOT blocked on their own — only these
+// reassuring phrases are. Case-insensitive substring match on the
+// lowercased verdict.
+const BANNED_REASSURANCE = [
+  "is safe",
+  "are safe",
+  "safe to buy",
+  "safe to hold",
+  "safe to use",
+  "safe to invest",
+  "secure investment",
+  "100% safe",
+  "guaranteed safe",
+  "audited",
+  "risk-free",
+];
+
+export function hasBannedReassurance(text: string): boolean {
+  const lower = text.toLowerCase();
+  return BANNED_REASSURANCE.some((phrase) => lower.includes(phrase));
 }

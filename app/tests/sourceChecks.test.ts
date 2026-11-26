@@ -292,4 +292,58 @@ describe("deployerMintCheck", () => {
     );
     expect(deployerMintCheck([{ path: "Test.sol", content: src }])).toBeNull();
   });
+
+  it("flags a mint of a supply variable assigned a numeric literal in the body", () => {
+    const src = snippet(
+      "    constructor() { uint256 supply = 1000000 * 10**18; _mint(msg.sender, supply); }",
+    );
+    const hit = deployerMintCheck([{ path: "Test.sol", content: src }]);
+    expect(hit).not.toBeNull();
+    expect(hit!.title).toMatch(/Entire supply minted/);
+    expect(hit!.majority).toBe(false);
+  });
+
+  it("flags a mint of a _total variable assigned a numeric literal", () => {
+    const src = snippet(
+      "    constructor() { uint256 _total = 1000000 * 10**18; _mint(msg.sender, _total); }",
+    );
+    expect(deployerMintCheck([{ path: "Test.sol", content: src }])).not.toBeNull();
+  });
+
+  it("flags a parenthesised fraction mint as a majority mint", () => {
+    const src = snippet(
+      [
+        "    uint256 public totalSupply = 1000000 * 10**18;",
+        "    constructor() { _mint(msg.sender, (totalSupply * 90) / 100); _mint(feeWallet, totalSupply / 10); }",
+      ].join("\n"),
+    );
+    const hit = deployerMintCheck([{ path: "Test.sol", content: src }]);
+    expect(hit).not.toBeNull();
+    expect(hit!.title).toMatch(/Almost the entire supply/);
+    expect(hit!.majority).toBe(true);
+  });
+
+  it("flags a no-space fraction mint as a majority mint", () => {
+    const src = snippet(
+      [
+        "    uint256 public totalSupply = 1000000 * 10**18;",
+        "    constructor() { _mint(msg.sender, totalSupply*9/10); _mint(feeWallet, totalSupply/10); }",
+      ].join("\n"),
+    );
+    const hit = deployerMintCheck([{ path: "Test.sol", content: src }]);
+    expect(hit).not.toBeNull();
+    expect(hit!.majority).toBe(true);
+  });
+
+  it("flags a parenthesised fraction balance assignment as a majority mint", () => {
+    const src = snippet(
+      [
+        "    uint256 public totalSupply = 1000000 * 10**18;",
+        "    constructor() { balances[msg.sender] = (totalSupply * 95) / 100; }",
+      ].join("\n"),
+    );
+    const hit = deployerMintCheck([{ path: "Test.sol", content: src }]);
+    expect(hit).not.toBeNull();
+    expect(hit!.majority).toBe(true);
+  });
 });

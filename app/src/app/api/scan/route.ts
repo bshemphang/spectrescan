@@ -1,7 +1,10 @@
 // SpectreScan — POST /api/scan (spec REQ-1, REQ-5, NFR-2).
 // Validates the address, runs the deterministic engine, adds the LLM
-// verdict, caches for 5 minutes. The scan result never depends on the LLM:
-// if the explainer fails, the findings still ship.
+// verdict, caches for 5 minutes (at most 200 entries, oldest first
+// out). The scan result never depends on the LLM: if the explainer
+// fails, the findings still ship. A retryExplainer flag re-runs only
+// the explainer against a fresh cached result, so the verdict can be
+// retried without a full rescan.
 
 import { explainScan } from "@/lib/explainer";
 import { isValidAddress, scanContract } from "@/lib/engine/scan";
@@ -16,6 +19,18 @@ import type { ScanResult } from "@/lib/engine/types";
 
 const cache = new Map<string, { at: number; result: ScanResult }>();
 const CACHE_MS = 5 * 60 * 1000;
+// Bounded cache: at most 200 entries, oldest first out. An unbounded
+// Map would grow with every unique address scanned until the process
+// ran out of memory.
+const CACHE_MAX = 200;
+
+function cachePut(key: string, result: ScanResult): void {
+  if (!cache.has(key) && cache.size >= CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, { at: Date.now(), result });
+}
 
 // Minimal per-instance rate limit: 60 scans per rolling minute. This is a
 // public, unauthenticated tool, so the limit only slows casual abuse; it
@@ -54,6 +69,10 @@ export async function POST(request: Request) {
     typeof body === "object" && body !== null && "address" in body
       ? String((body as { address: unknown }).address ?? "")
       : "";
+  const retryExplainer =
+    typeof body === "object" && body !== null && "retryExplainer" in body
+      ? (body as { retryExplainer?: unknown }).retryExplainer === true
+      : false;
   if (!isValidAddress(address)) {
     return Response.json(
       { error: "That is not a valid contract address. Use 0x followed by 40 hex characters." },
@@ -63,6 +82,13 @@ export async function POST(request: Request) {
   const key = address.trim().toLowerCase();
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) {
+    if (retryExplainer) {
+      // Verdict-only retry: the engine result is still fresh, so only
+      // re-run the explainer and update the cached verdict.
+      const explanation = await explainScan(hit.result);
+      hit.result.explanation = explanation;
+      hit.result.explainerFailed = explanation === null;
+    }
     return Response.json(hit.result);
   }
 
@@ -70,6 +96,6 @@ export async function POST(request: Request) {
   const explanation = await explainScan(result);
   result.explanation = explanation;
   result.explainerFailed = explanation === null;
-  cache.set(key, { at: Date.now(), result });
+  cachePut(key, result);
   return Response.json(result);
 }

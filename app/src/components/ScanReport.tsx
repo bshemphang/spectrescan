@@ -23,17 +23,57 @@ export default function ScanReport({
   elapsed: number | null;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  // The verdict can be retried on its own: the route re-runs only the
+  // explainer against the cached scan, so a flaky LLM call does not
+  // force a full rescan.
+  const [explanation, setExplanation] = useState<string | null>(
+    result.explanation,
+  );
+  const [verdictFailed, setVerdictFailed] = useState(result.explainerFailed);
+  const [retrying, setRetrying] = useState(false);
+  const [retryFailed, setRetryFailed] = useState(false);
 
   async function copyLink() {
+    setCopyFailed(false);
     try {
       await navigator.clipboard.writeText(window.location.href);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard unavailable (non-secure context): the address bar URL
-      // is the shareable link; nothing else to do.
+      // Clipboard unavailable (non-secure context): say so plainly —
+      // the address bar URL is the shareable link.
+      setCopyFailed(true);
     }
   }
+
+  async function retryVerdict() {
+    setRetrying(true);
+    setRetryFailed(false);
+    try {
+      const res = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: result.address, retryExplainer: true }),
+      });
+      const json = (await res.json()) as ScanResult & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Retry failed.");
+      setExplanation(json.explanation);
+      setVerdictFailed(json.explainerFailed);
+    } catch {
+      setRetryFailed(true);
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  // Empty-string names render blank with ??, so fall back with || and
+  // use the address itself as the title when both name and symbol are
+  // empty.
+  const title =
+    result.token.name || result.token.symbol
+      ? `${result.token.name || result.token.symbol}${result.token.name && result.token.symbol ? ` (${result.token.symbol})` : ""}`
+      : result.address;
 
   const sortedFindings = [...result.findings].sort(
     (a, b) =>
@@ -48,21 +88,38 @@ export default function ScanReport({
       >
         <div className="min-w-0">
           <h1 className="font-display text-2xl font-semibold text-balance text-bone sm:text-3xl">
-            {result.token.name ?? "Unknown token"}
-            {result.token.symbol ? ` (${result.token.symbol})` : ""}
+            {title}
           </h1>
           <p className="mt-2 font-mono text-xs break-all text-bone-dim">
             {result.address}
           </p>
-          {result.explanation ? (
+          {explanation ? (
             <p className="mt-5 max-w-[65ch] leading-relaxed text-bone">
-              {result.explanation}
+              {explanation}
             </p>
           ) : (
-            <p className="mt-5 max-w-[65ch] leading-relaxed text-bone">
-              The ghost&apos;s verdict could not be written this time. The
-              findings below still stand on their own.
-            </p>
+            <>
+              <p className="mt-5 max-w-[65ch] leading-relaxed text-bone">
+                The ghost&apos;s verdict could not be written this time. The
+                findings below still stand on their own.
+              </p>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={retryVerdict}
+                  disabled={retrying}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/15 px-4 text-sm font-medium text-bone transition-[background-color,border-color] hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral disabled:opacity-60"
+                >
+                  <RotateCcw size={15} strokeWidth={1.5} aria-hidden />
+                  {retrying ? "Retrying the verdict…" : "Retry verdict"}
+                </button>
+                {retryFailed && (
+                  <p role="status" className="mt-2 text-sm text-[#f26d6d]">
+                    The verdict could not be retried. Try again in a moment.
+                  </p>
+                )}
+              </div>
+            </>
           )}
           <p className="mt-5 flex items-start gap-2 text-sm text-bone-dim">
             <ShieldCheck
@@ -80,7 +137,7 @@ export default function ScanReport({
             {result.findings.length === 1 ? "finding" : "findings"} · scanned{" "}
             {new Date(result.scannedAt).toLocaleString()}
             {elapsed !== null ? ` · took ${elapsed.toFixed(1)}s` : ""}
-            {result.explainerFailed
+            {verdictFailed
               ? " · verdict unavailable, findings shown"
               : ""}
           </p>
@@ -132,6 +189,11 @@ export default function ScanReport({
           Scan another contract
         </Link>
       </div>
+      {copyFailed && (
+        <p role="status" className="mt-3 text-sm text-[#f26d6d]">
+          Copy failed — copy the URL from the address bar instead.
+        </p>
+      )}
 
       <p className="mt-8 flex items-start gap-2 text-xs leading-relaxed text-bone-dim">
         <TriangleAlert

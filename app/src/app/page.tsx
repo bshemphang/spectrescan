@@ -51,7 +51,10 @@ export default function Home() {
     router.push(`/scan/${value}`);
   }
 
-  const selo = SAMPLE_CONTRACTS[0];
+  // Find SELO by label, not by array index: reordering the samples
+  // must never point the hero preview at a different contract.
+  const selo =
+    SAMPLE_CONTRACTS.find((s) => s.label === "SELO") ?? SAMPLE_CONTRACTS[0];
 
   return (
     <div className="relative mx-auto w-full max-w-6xl px-5 sm:px-8">

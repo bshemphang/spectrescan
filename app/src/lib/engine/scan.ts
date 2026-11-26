@@ -83,7 +83,13 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
   if (owner && owner !== ZERO_ADDRESS) {
     ownerIsContract = await isContract(owner);
     if (ownerIsContract === true) {
-      ownerVerified = (await getSourcifySource(owner)) !== null;
+      // The owner may be the token contract itself (self-owned); its
+      // Sourcify status is already known from the token fetch above,
+      // so skip the duplicate request and reuse it.
+      ownerVerified =
+        owner.toLowerCase() === address.toLowerCase()
+          ? sourcify !== null
+          : (await getSourcifySource(owner)) !== null;
     }
   }
 
@@ -160,7 +166,10 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
   const deployerMint = findings.find((f) => f.id === "deployer-mint");
   const noPair = findings.find((f) => f.id === "no-pair");
   if (deployerMint && noPair) {
-    const almost = deployerMint.title.startsWith("Almost");
+    // The deployer-mint finding carries a structured majority flag
+    // (90%+ of the supply, not the whole supply); the wording follows
+    // the flag, never a title-string match.
+    const almost = deployerMint.majority === true;
     setSeverity(noPair, "high");
     noPair.title = almost
       ? "No trading pair — and the deployer holds almost everything"

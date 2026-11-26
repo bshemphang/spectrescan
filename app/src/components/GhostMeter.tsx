@@ -1,11 +1,14 @@
 // SpectreScan — ghost meter: an SVG arc dial for the 0–100 risk score.
 // Colour follows the band: green (resting) → violet (mild) → amber
-// (haunted) → red (possessed). The arc draws itself on load; under
-// prefers-reduced-motion it renders in its final state with no animation.
+// (haunted) → red (possessed). The arc draws itself on load via a CSS
+// animation (see .meter-arc in globals.css): no JS state, so the arc
+// still draws if hydration fails, and the stroke-dashoffset attribute
+// already holds the final value, so no-JS and reduced-motion both render
+// the finished arc.
 
 "use client";
 
-import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import type { RiskBand } from "@/lib/engine/types";
 
 const BAND_COLOR: Record<RiskBand, string> = {
@@ -38,21 +41,11 @@ export default function GhostMeter({
       ? ""
       : `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`;
 
-  // Draw-in on load: dashoffset goes from 100 (hidden) to 100 - frac*100.
-  // Deferred to the next frame so the initial paint shows the empty arc
-  // and the transition has somewhere to go.
-  const [shown, setShown] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => {
-      setReduceMotion(
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-      );
-      setShown(true);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  const offset = shown ? 100 - frac * 100 : 100;
+  // Draw-in: the CSS animation runs from offset 100 (hidden) to the
+  // final offset in --meter-to. The attribute below already holds the
+  // final value, so the arc is correct even before the animation runs
+  // or if CSS animations are disabled.
+  const offset = 100 - frac * 100;
 
   return (
     <div className="flex flex-col items-center">
@@ -77,14 +70,8 @@ export default function GhostMeter({
             pathLength={100}
             strokeDasharray="100"
             strokeDashoffset={offset}
-            style={
-              reduceMotion
-                ? undefined
-                : {
-                    transition:
-                      "stroke-dashoffset 900ms cubic-bezier(0.22, 1, 0.36, 1)",
-                  }
-            }
+            className="meter-arc"
+            style={{ "--meter-to": offset } as CSSProperties}
           />
         )}
         <text

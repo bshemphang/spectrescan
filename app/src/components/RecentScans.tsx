@@ -54,7 +54,7 @@ export default function RecentScans() {
           No scans yet in this browser. Your scans will appear here.
         </p>
       ) : (
-        <ul className="mt-4 divide-y divide-white/8 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
+        <ul className="mt-4 divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
           {scans.map((scan) => (
             <li key={scan.address}>
               <Link

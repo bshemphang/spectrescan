@@ -93,7 +93,32 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .atmosphere-glow {
+  /* Hide the whole layer, not just the drift: the grid and grain are
+     visual noise too, and the documented claim is "all disabled". */
+  .atmosphere {
+    display: none;
+  }
+}
+
+/* Ghost meter draw-in: the arc starts hidden (offset 100) and draws to
+   its score (--meter-to). Pure CSS, so it runs even if hydration fails;
+   the stroke-dashoffset attribute already holds the final value, so
+   no-JS and reduced-motion both render the finished arc. */
+.meter-arc {
+  animation: meter-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes meter-draw {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: var(--meter-to, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meter-arc {
     animation: none;
   }
 }

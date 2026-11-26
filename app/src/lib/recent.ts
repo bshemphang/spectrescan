@@ -12,7 +12,7 @@ export interface RecentScan {
 }
 
 const KEY = "spectrescan:recent";
-const MAX = 5;
+const MAX = 10;
 
 export function loadRecent(): RecentScan[] {
   try {
