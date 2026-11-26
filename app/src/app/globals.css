@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --color-haunt-bg: #0c0a12;
+  --color-haunt-panel: #16121f;
+  --color-haunt-panel-2: #1e1829;
+  --color-haunt-border: #2c2440;
+  --color-bone: #f2f0ea;
+  --color-bone-dim: #b8b3c4;
+  --color-spectral: #a78bfa;
+  --color-spectral-deep: #7c5cf0;
+  --color-ectoplasm: #7fe0b2;
+  --color-ember: #f0a35e;
+  --color-blood: #f26d6d;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+body {
+  background: var(--color-haunt-bg);
+  color: var(--color-bone);
+  font-family: var(--font-sans);
+}
+
+/* Subtle haunted backdrop: faint radial glow, no images. */
+.haunt-bg {
+  background:
+    radial-gradient(60rem 30rem at 50% -10%, rgba(167, 139, 250, 0.12), transparent 60%),
+    radial-gradient(40rem 24rem at 90% 110%, rgba(127, 224, 178, 0.05), transparent 60%),
+    var(--color-haunt-bg);
+}

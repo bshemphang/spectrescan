@@ -1,0 +1,24 @@
+{
+  "name": "spectrescan-mcp-server",
+  "version": "1.0.0",
+  "description": "SpectreScan MCP server — live BSC contract data for Kiro (Sourcify source, RPC token facts, Dexscreener pairs, full deterministic scan).",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js",
+    "mcp": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

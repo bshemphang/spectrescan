@@ -1,0 +1,93 @@
+// SpectreScan — property tests for the deterministic scorer (spec REQ-4, REQ-9).
+// Proves with fast-check: score ∈ [0,100], determinism, monotonicity,
+// and empty findings → 0.
+
+import { describe, expect, it } from "vitest";
+import * as fc from "fast-check";
+import { bandFor, scoreFindings, weightFor } from "../src/lib/engine/scoring";
+import type { Finding, Severity } from "../src/lib/engine/types";
+
+const severityArb: fc.Arbitrary<Severity> = fc.constantFrom(
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+);
+
+const findingArb: fc.Arbitrary<Finding> = fc.record({
+  id: fc.string({ minLength: 1, maxLength: 20 }),
+  check: fc.constantFrom("R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"),
+  severity: severityArb,
+  title: fc.string({ minLength: 1, maxLength: 30 }),
+  detail: fc.string({ minLength: 0, maxLength: 50 }),
+  evidence: fc.array(fc.string({ maxLength: 20 }), { maxLength: 3 }),
+  weight: fc.integer({ min: 0, max: 40 }),
+});
+
+describe("scoreFindings", () => {
+  it("always lands in [0, 100]", () => {
+    fc.assert(
+      fc.property(fc.array(findingArb, { maxLength: 12 }), (findings) => {
+        const score = scoreFindings(findings);
+        expect(score).toBeGreaterThanOrEqual(0);
+        expect(score).toBeLessThanOrEqual(100);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it("is deterministic: same findings, any order, same score", () => {
+    fc.assert(
+      fc.property(fc.array(findingArb, { maxLength: 10 }), (findings) => {
+        const a = scoreFindings(findings);
+        const shuffled = [...findings].reverse();
+        expect(scoreFindings(shuffled)).toBe(a);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it("is monotonic: adding findings never lowers the score", () => {
+    fc.assert(
+      fc.property(
+        fc.array(findingArb, { maxLength: 8 }),
+        fc.array(findingArb, { maxLength: 4 }),
+        (base, extra) => {
+          expect(scoreFindings([...base, ...extra])).toBeGreaterThanOrEqual(
+            scoreFindings(base),
+          );
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it("empty findings score 0", () => {
+    expect(scoreFindings([])).toBe(0);
+  });
+
+  it("weights are non-negative and match the severity table", () => {
+    for (const severity of ["critical", "high", "medium", "low", "info"] as Severity[]) {
+      expect(weightFor(severity)).toBeGreaterThanOrEqual(0);
+    }
+    expect(weightFor("critical")).toBe(40);
+    expect(weightFor("high")).toBe(25);
+    expect(weightFor("medium")).toBe(12);
+    expect(weightFor("low")).toBe(5);
+    expect(weightFor("info")).toBe(0);
+  });
+});
+
+describe("bandFor", () => {
+  it("maps the documented thresholds", () => {
+    expect(bandFor(0)).toBe("Resting in peace");
+    expect(bandFor(24)).toBe("Resting in peace");
+    expect(bandFor(25)).toBe("Mildly haunted");
+    expect(bandFor(49)).toBe("Mildly haunted");
+    expect(bandFor(50)).toBe("Haunted");
+    expect(bandFor(74)).toBe("Haunted");
+    expect(bandFor(75)).toBe("Possessed — do not touch");
+    expect(bandFor(100)).toBe("Possessed — do not touch");
+  });
+});
