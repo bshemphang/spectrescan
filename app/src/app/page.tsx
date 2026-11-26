@@ -116,7 +116,7 @@ export default function Home() {
               </p>
               <h1
                 id="hero-heading"
-                className="mt-4 font-display text-[2.5rem] leading-[1.02] font-medium text-balance text-bone sm:text-6xl"
+                className="mt-4 font-haunt text-[2.5rem] leading-[1.02] font-medium text-balance text-bone sm:text-6xl"
               >
                 Is this contract{" "}
                 <span className="text-spectral">haunted?</span>
@@ -166,7 +166,7 @@ export default function Home() {
                 public on-chain data, and market signals.
               </p>
               <p className="mt-6 font-mono text-xs text-bone-dim">
-                9 checks · 4 data sources · 93 tests · same findings, same
+                9 checks · 4 data sources · 110 tests · same findings, same
                 score
               </p>
             </div>
@@ -360,7 +360,7 @@ export default function Home() {
             </div>
             <Reveal delay={150}>
               <p className="mt-6 rounded-2xl border border-haunt-border bg-haunt-panel p-5 text-sm leading-relaxed text-bone-dim">
-                93 tests. Property tests prove determinism (same findings,
+                110 tests. Property tests prove determinism (same findings,
                 any order, same score) and monotonicity (adding a finding
                 never lowers the score). Live fixture scans re-check SELO,
                 AGIO, and CAKE on every engine save. Repo:{" "}

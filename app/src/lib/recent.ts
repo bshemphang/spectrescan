@@ -26,7 +26,10 @@ export function loadRecent(): RecentScan[] {
           typeof e === "object" &&
           e !== null &&
           typeof (e as RecentScan).address === "string" &&
-          typeof (e as RecentScan).score === "number",
+          /^0x[0-9a-fA-F]{40}$/.test((e as RecentScan).address) &&
+          typeof (e as RecentScan).score === "number" &&
+          Number.isFinite((e as RecentScan).score) &&
+          typeof (e as RecentScan).band === "string",
       )
       .slice(0, MAX);
   } catch {

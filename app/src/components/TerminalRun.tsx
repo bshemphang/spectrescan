@@ -65,7 +65,7 @@ export default function TerminalRun({ address }: { address: string }) {
       </div>
       <p className="mt-3 text-center text-xs text-bone-dim">
         Agent run log. The lines are timed, the engine does not stream
-        progress. A full scan usually takes under 30 seconds.
+        progress. A full scan usually takes about 35 seconds.
       </p>
     </div>
   );

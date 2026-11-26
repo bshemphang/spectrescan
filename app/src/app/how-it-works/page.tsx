@@ -102,7 +102,7 @@ export default function HowItWorksPage() {
           </p>
           <h1
             id="how-heading"
-            className="mt-3 font-display text-4xl font-medium text-bone sm:text-5xl"
+            className="mt-3 font-haunt text-4xl font-medium text-bone sm:text-5xl"
           >
             How the ghost decides
           </h1>

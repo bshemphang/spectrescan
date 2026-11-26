@@ -5,12 +5,30 @@
 
 import { Suspense } from "react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { TriangleAlert } from "lucide-react";
 import ScanPageClient from "./ScanPageClient";
 import SiteFooter from "@/components/SiteFooter";
 import SiteHeader from "@/components/SiteHeader";
-import { isValidAddress } from "@/lib/engine/scan";
+import { isValidAddress, scanContract } from "@/lib/engine/scan";
+import { metaCacheGet, metaCachePut, rateLimited } from "@/lib/scanCache";
+
+// Social crawlers that read OpenGraph tags. A human visit must never
+// pay for a server-side scan just to fill metadata: the page already
+// scans in the browser, so only these user agents get the engine run
+// in generateMetadata. The engine run here is deterministic only, no
+// LLM verdict, and its result is not cached in the scan cache:
+// caching an explanation-less result would hand the API a scan with
+// no verdict for five minutes. The title and description are cached
+// separately in a small metadata cache instead, and the gate is
+// rate-limited per IP like the API, because a user agent string is
+// fully attacker controlled and anyone can send "twitterbot" with
+// curl to force a full engine run.
+const BOT_UA =
+  /twitterbot|facebookexternalhit|linkedinbot|slackbot|discordbot|telegrambot|whatsapp|googlebot/i;
+
+const SITE_URL = "https://spectrescan.onrender.com";
 
 export async function generateMetadata({
   params,
@@ -18,10 +36,94 @@ export async function generateMetadata({
   params: Promise<{ address: string }>;
 }): Promise<Metadata> {
   const { address } = await params;
-  return {
+  const generic: Metadata = {
     title: `Scan ${address} | SpectreScan`,
     description:
       "SpectreScan reads a BNB Chain contract's verified source and on-chain footprint and tells you what is wrong with it, with the evidence cited.",
+  };
+  if (!isValidAddress(address)) return generic;
+  let ua = "";
+  let ip = "unknown";
+  try {
+    const h = await headers();
+    ua = h.get("user-agent") ?? "";
+    const forwarded = h.get("x-forwarded-for");
+    ip = forwarded?.split(",")[0]?.trim() || "unknown";
+  } catch {
+    return generic;
+  }
+  if (!BOT_UA.test(ua)) return generic;
+  // A cached title and description answer a repeated crawl without
+  // re-running the engine. A spoofed UA still hits the per-IP rate
+  // limit, and a limited bot gets the generic tags, not an error.
+  const metaKey = address.toLowerCase();
+  const cached = metaCacheGet(metaKey);
+  if (cached) {
+    return {
+      title: cached.title,
+      description: cached.description,
+      openGraph: {
+        title: cached.title,
+        description: cached.description,
+        url: `${SITE_URL}/scan/${address}`,
+        siteName: "SpectreScan",
+        type: "website",
+      },
+      twitter: {
+        card: "summary",
+        title: cached.title,
+        description: cached.description,
+      },
+    };
+  }
+  if (rateLimited(`meta:${ip}`)) return generic;
+  let result;
+  try {
+    result = await scanContract(address);
+  } catch {
+    return generic;
+  }
+  if (result.isEOA) {
+    return {
+      title: `${address} is a wallet, not a token | SpectreScan`,
+      description:
+        "That address holds no contract code, so there is no token to score. SpectreScan reads a BNB Chain contract's verified source and on-chain footprint.",
+      openGraph: {
+        title: `${address} is a wallet, not a token | SpectreScan`,
+        description:
+          "That address holds no contract code, so there is no token to score.",
+        url: `${SITE_URL}/scan/${address}`,
+        siteName: "SpectreScan",
+        type: "website",
+      },
+      twitter: {
+        card: "summary",
+        title: `${address} is a wallet, not a token | SpectreScan`,
+        description:
+          "That address holds no contract code, so there is no token to score.",
+      },
+    };
+  }
+  const name =
+    result.token.name || result.token.symbol || result.address;
+  const title = `${name}: ${result.score}/100, ${result.band} | SpectreScan`;
+  const description = `SpectreScan scored ${name} ${result.score} out of 100: ${result.band}. ${result.findings.length} ${result.findings.length === 1 ? "finding" : "findings"} from nine deterministic checks on the verified source and on-chain footprint. SpectreScan is not an audit.`;
+  metaCachePut(metaKey, { title, description });
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: `${SITE_URL}/scan/${address}`,
+      siteName: "SpectreScan",
+      type: "website",
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+    },
   };
 }
 

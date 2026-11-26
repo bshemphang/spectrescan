@@ -19,9 +19,11 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   Check,
+  Download,
   Link2,
   RotateCcw,
   ShieldCheck,
+  Star,
   TriangleAlert,
   Wallet,
 } from "lucide-react";
@@ -33,7 +35,32 @@ import TransferFlow from "./TransferFlow";
 import { stripMarkdown } from "@/lib/explainer";
 import { isSoundEnabled, playVerdictChime } from "@/lib/sound";
 import { formatDate, shortAddress } from "@/lib/format";
+import { downloadMarkdown, buildMarkdownReport } from "@/lib/exportReport";
+import {
+  isWatched,
+  unwatchToken,
+  watchToken,
+} from "@/lib/watchlist";
+import {
+  diffSnapshots,
+  loadSnapshot,
+  saveSnapshot,
+  toSnapshot,
+} from "@/lib/snapshots";
 import type { ScanResult } from "@/lib/engine/types";
+
+// Plain-language band meaning: what the band means in one line,
+// and what it does not mean. A low score never means safe.
+const BAND_MEANING: Record<string, string> = {
+  "Resting in peace":
+    "Nothing the nine checks could see looks wrong. That does not mean the token is safe, only that no check found anything.",
+  "Mildly haunted":
+    "A few things look off, but nothing here proves a rug on its own. Read the findings before deciding anything.",
+  Haunted:
+    "Several serious patterns showed up. Treat this token as dangerous until every finding is explained.",
+  Possessed:
+    "The checks found the patterns rugs are made of. Stay away unless you understand every finding.",
+};
 
 // The 3D core is lazy-loaded after the hero text: Three.js must not
 // hold up the first paint.
@@ -69,6 +96,61 @@ export default function ScanReport({
   );
   const [retrying, setRetrying] = useState(false);
   const [retryFailed, setRetryFailed] = useState(false);
+  // Watchlist star: the dossier is where a token gets starred, and
+  // the star reflects the stored state on mount.
+  const [watched, setWatched] = useState(false);
+  // Re-scan comparison: the previous snapshot is read first, then
+  // this scan is saved as the new one. The comparison only exists
+  // when a previous scan of this address is stored.
+  const [comparison, setComparison] = useState<ReturnType<
+    typeof diffSnapshots
+  > | null>(null);
+  const [previousScannedAt, setPreviousScannedAt] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (result.isEOA) return;
+    setWatched(isWatched(result.address));
+    const previous = loadSnapshot(result.address);
+    if (previous) {
+      setComparison(diffSnapshots(previous, toSnapshot(result)));
+      setPreviousScannedAt(previous.scannedAt);
+    } else {
+      setComparison(null);
+      setPreviousScannedAt(null);
+    }
+    saveSnapshot(toSnapshot(result));
+    // Once per scan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result.address, result.scannedAt]);
+
+  function toggleWatch() {
+    if (watched) {
+      unwatchToken(result.address);
+      setWatched(false);
+    } else {
+      watchToken({
+        address: result.address,
+        name: result.token.name || null,
+        symbol: result.token.symbol || null,
+        score: result.score,
+        band: result.band,
+        addedAt: new Date().toISOString(),
+        lastScannedAt: result.scannedAt,
+      });
+      setWatched(true);
+    }
+  }
+
+  function exportReport() {
+    const markdown = buildMarkdownReport(result);
+    const name =
+      (result.token.symbol || result.token.name || "token")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-") || "token";
+    downloadMarkdown(`spectrescan-${name}-${result.score}.md`, markdown);
+  }
 
   // Verdict reveal: a particle burst over the page and, only when the
   // header toggle is on, the soft chime. Off by default, and the
@@ -167,6 +249,42 @@ export default function ScanReport({
         )}
         {copied ? "Link copied" : "Copy link"}
       </button>
+      {!result.isEOA && (
+        <button
+          type="button"
+          onClick={toggleWatch}
+          aria-pressed={watched}
+          aria-label={
+            watched
+              ? "Remove this token from your watchlist"
+              : "Add this token to your watchlist"
+          }
+          className={`inline-flex h-11 items-center gap-2 rounded-lg border px-5 text-sm font-medium transition-[background-color,border-color] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral ${
+            watched
+              ? "border-ember/60 bg-ember/10 text-ember"
+              : "border-white/15 text-bone hover:border-white/30 hover:bg-white/[0.04]"
+          }`}
+        >
+          <Star
+            size={16}
+            strokeWidth={1.5}
+            aria-hidden
+            fill={watched ? "currentColor" : "none"}
+          />
+          {watched ? "Watching" : "Watch this token"}
+        </button>
+      )}
+      {!result.isEOA && (
+        <button
+          type="button"
+          onClick={exportReport}
+          aria-label="Download this scan as a markdown report"
+          className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/15 px-5 text-sm font-medium text-bone transition-[background-color,border-color] hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+        >
+          <Download size={16} strokeWidth={1.5} aria-hidden />
+          Download report
+        </button>
+      )}
       <Link
         href="/"
         className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/15 px-5 text-sm font-medium text-bone transition-[background-color,border-color] hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
@@ -293,6 +411,11 @@ export default function ScanReport({
             Same findings, same score, every time. The score is decided by
             the rules below; the verdict only puts them into words.
           </p>
+          <p className="mt-3 text-sm leading-relaxed text-bone">
+            What {result.band} means:{" "}
+            {BAND_MEANING[result.band] ??
+              "The checks found something worth reading below."}
+          </p>
           <p className="mt-3 text-xs text-bone-dim">
             Source {result.verified ? "verified" : "not verified"} ·{" "}
             {result.findings.length}{" "}
@@ -313,6 +436,50 @@ export default function ScanReport({
           </div>
         </div>
       </section>
+
+      {comparison && previousScannedAt && (
+        <section
+          aria-label="What changed since the last scan"
+          className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-6"
+        >
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.22em] text-spectral">
+            Compared with the last scan
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed text-bone">
+            Last scan {new Date(previousScannedAt).toLocaleString()}, this
+            scan {new Date(result.scannedAt).toLocaleString()}. Score{" "}
+            {comparison.scoreDelta === 0
+              ? `unchanged at ${result.score}`
+              : `${comparison.scoreDelta > 0 ? "rose" : "fell"} by ${Math.abs(comparison.scoreDelta)}, ${comparison.previousScore} to ${result.score}`}
+            {comparison.bandChanged
+              ? `, and the band changed from ${comparison.previousBand} to ${result.band}`
+              : `, band still ${result.band}`}
+            .
+          </p>
+          {comparison.gained.length > 0 && (
+            <p className="mt-2 text-sm text-bone-dim">
+              New since then:{" "}
+              {comparison.gained.map((f) => f.title).join("; ")}.
+            </p>
+          )}
+          {comparison.lost.length > 0 && (
+            <p className="mt-2 text-sm text-bone-dim">
+              Gone since then:{" "}
+              {comparison.lost.map((f) => f.title).join("; ")}.
+            </p>
+          )}
+          {comparison.gained.length === 0 &&
+            comparison.lost.length === 0 && (
+              <p className="mt-2 text-sm text-bone-dim">
+                The findings are the same as last time.
+              </p>
+            )}
+          <p className="mt-3 text-xs text-bone-dim">
+            This compares two scans you ran in this browser. It is not
+            continuous monitoring: nothing re-scans while you are away.
+          </p>
+        </section>
+      )}
 
       {dossier && summary && (
         <section
@@ -411,6 +578,45 @@ export default function ScanReport({
             ))}
           </div>
         )}
+      </section>
+
+      <section
+        aria-label="Share this scan"
+        className="mt-10 rounded-2xl border border-haunt-border bg-haunt-panel p-5 sm:p-6"
+      >
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.22em] text-spectral">
+          Share this scan
+        </h2>
+        <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl border border-white/10 bg-black/40 p-5">
+          <span
+            aria-hidden
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-spectral/50 bg-spectral/15 font-haunt text-xl text-spectral"
+          >
+            {result.score}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-display text-lg font-semibold text-bone">
+              {title}
+            </span>
+            <span className="mt-0.5 block text-sm text-bone-dim">
+              SpectreScan · {result.band} · scored {result.score} out of
+              100
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={copyLink}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-spectral px-4 text-sm font-semibold text-white transition-[background-color,box-shadow] hover:bg-[#8b5cf6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+          >
+            <Link2 size={15} strokeWidth={1.5} aria-hidden />
+            {copied ? "Link copied" : "Copy the link"}
+          </button>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-bone-dim">
+          Pasting this link in a chat or a post shows the token, the
+          score, and the band, so the person opening it knows what
+          they are walking into.
+        </p>
       </section>
 
       {actions}

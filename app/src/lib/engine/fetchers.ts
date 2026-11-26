@@ -157,6 +157,15 @@ export async function ethCall(to: string, data: string): Promise<string | null> 
   }
 }
 
+export async function ethGetBalance(address: string): Promise<bigint | null> {
+  try {
+    const result = (await rpcPost("eth_getBalance", [address, "latest"])) as string;
+    return typeof result === "string" ? decodeUint(result) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function ethGetCode(address: string): Promise<string | null> {
   try {
     const result = (await rpcPost("eth_getCode", [address, "latest"])) as string;

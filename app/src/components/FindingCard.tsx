@@ -1,6 +1,7 @@
 // SpectreScan — one finding card: severity, plain title, explanation,
 // and the evidence (file:line refs or on-chain values).
 
+import Link from "next/link";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -56,6 +57,14 @@ export default function FindingCard({ finding }: { finding: Finding }) {
           </div>
           <p className="mt-1 text-sm leading-relaxed text-bone-dim">
             {finding.detail}
+          </p>
+          <p className="mt-2">
+            <Link
+              href={`/learn#check-${finding.check.toLowerCase()}`}
+              className="text-sm font-medium text-spectral hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+            >
+              Learn how this check works
+            </Link>
           </p>
           {finding.evidence.length > 0 && (
             <ul className="mt-3 space-y-1">

@@ -12,6 +12,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 
 interface Particle {
   x: number;
@@ -51,8 +52,28 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+interface FallGhost {
+  x: number;
+  y: number;
+  size: number;
+  speed: number;
+  sway: number;
+  phase: number;
+  rot: number;
+  rotSpeed: number;
+  alpha: number;
+  color: [number, number, number];
+}
+
 export default function EffectsCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
+  const pathname = usePathname();
+  // The designer keeps the falling ghosts off the serious pages:
+  // the API docs and the wallet check read as trustworthy tools,
+  // not a haunted house. Every other page gets the drift.
+  const fallingOff =
+    pathname !== null &&
+    (pathname.startsWith("/api-docs") || pathname.startsWith("/wallet"));
 
   useEffect(() => {
     const canvas = ref.current;
@@ -67,6 +88,11 @@ export default function EffectsCanvas() {
     const ecto = hexToRgb(varColor("--color-ectoplasm", "#7fe0b2"));
     const ember = hexToRgb(varColor("--color-ember", "#f0a35e"));
     const blood = hexToRgb(varColor("--color-blood", "#f26d6d"));
+    // Kiro violet: the brand mark on kiro.dev is a white ghost on
+    // #9046FF. The falling ghosts wear that violet, so the drift
+    // reads as Kiro's ghost, not a generic one, while the shape
+    // itself stays the app's own original sheet ghost.
+    const kiro: [number, number, number] = [144, 70, 255];
 
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
@@ -116,6 +142,37 @@ export default function EffectsCanvas() {
       }
     };
     spawnAmbient();
+
+    // Falling Kiro ghosts: the sakura-petal drift, but with little
+    // sheet ghosts. Fifteen on a wide screen, six on a phone, small
+    // (14 to 26px), slow (a full fall takes about a minute), 10
+    // percent opacity, swaying side to side and turning a few
+    // degrees as they fall, like petals. They respawn at the top
+    // when they drift past the bottom. One canvas, one loop, no
+    // images, no layout shift: the canvas is fixed, pointer-events
+    // none, and sits behind the content. Off entirely under
+    // prefers-reduced-motion and on the serious pages.
+    const fallGhosts: FallGhost[] = [];
+    const spawnFallGhosts = () => {
+      if (fallingOff) return;
+      const count = w < 640 ? 6 : 15;
+      for (let i = 0; i < count; i++) {
+        const violet = Math.random() < 0.7;
+        fallGhosts.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          size: 14 + Math.random() * 12,
+          speed: 0.12 + Math.random() * 0.22,
+          sway: 0.3 + Math.random() * 0.7,
+          phase: Math.random() * Math.PI * 2,
+          rot: (Math.random() - 0.5) * 0.35,
+          rotSpeed: (Math.random() - 0.5) * 0.0012,
+          alpha: 0.07 + Math.random() * 0.05,
+          color: violet ? kiro : spectral,
+        });
+      }
+    };
+    spawnFallGhosts();
 
     const mists: Mist[] = [
       { x: 0.22, y: 0.16, r: 0.42, vx: 0.00004, vy: 0.00002, color: "spectral", alpha: 0.05 },
@@ -207,6 +264,10 @@ export default function EffectsCanvas() {
         ctx.fillStyle = g;
         ctx.fillRect(mx - mr, my - mr, mr * 2, mr * 2);
       }
+      // Falling Kiro ghosts, behind the particles.
+      for (const g of fallGhosts) {
+        drawFallGhost(g);
+      }
       // Particles.
       for (const p of particles) {
         ctx.fillStyle = `${p.color}${p.alpha})`;
@@ -215,6 +276,39 @@ export default function EffectsCanvas() {
         ctx.fill();
       }
       drawGhost(t);
+    };
+
+    // One falling ghost: the app's own sheet-ghost shape (dome head,
+    // wavy hem, two dot eyes) drawn small, in Kiro violet, at 10
+    // percent opacity. The rotation is the petal tumble, kept to a
+    // few degrees so the ghost never turns upside down.
+    const drawFallGhost = (g: FallGhost) => {
+      const s = g.size / 24;
+      ctx.save();
+      ctx.translate(g.x, g.y);
+      ctx.rotate(g.rot);
+      ctx.scale(s, s);
+      ctx.fillStyle = rgba(g.color, g.alpha);
+      ctx.beginPath();
+      ctx.moveTo(-12, 12);
+      ctx.lineTo(-12, -2.4);
+      ctx.bezierCurveTo(-12, -12, -4.8, -12, 0, -12);
+      ctx.bezierCurveTo(4.8, -12, 12, -12, 12, -2.4);
+      ctx.lineTo(12, 12);
+      const step = 24 / 3;
+      for (let i = 0; i < 3; i++) {
+        const x0 = 12 - step * i;
+        const x1 = 12 - step * (i + 1);
+        ctx.quadraticCurveTo((x0 + x1) / 2, 12 - 3.4, x1, 12);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = `rgba(12,10,18,${Math.min(0.85, g.alpha * 6)})`;
+      ctx.beginPath();
+      ctx.arc(-3, -2, 1.7, 0, Math.PI * 2);
+      ctx.arc(3, -2, 1.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     };
 
     const step = (t: number) => {
@@ -226,6 +320,19 @@ export default function EffectsCanvas() {
       }
       ghost.lean += (mouse.x - 0.5) * 26 - ghost.lean * 0.04;
       ghost.lean *= 0.96;
+      for (const g of fallGhosts) {
+        g.y += g.speed;
+        g.x += Math.sin(t * 0.0006 + g.phase) * 0.25 * g.sway;
+        g.rot += g.rotSpeed;
+        if (g.rot > 0.3) g.rotSpeed = -Math.abs(g.rotSpeed);
+        if (g.rot < -0.3) g.rotSpeed = Math.abs(g.rotSpeed);
+        if (g.y - g.size > h) {
+          g.y = -g.size - 4;
+          g.x = Math.random() * w;
+        }
+        if (g.x < -g.size) g.x = w + g.size;
+        if (g.x > w + g.size) g.x = -g.size;
+      }
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         if (p.life !== Infinity) {
@@ -253,7 +360,10 @@ export default function EffectsCanvas() {
 
     if (reduced) {
       // One static frame, no loop: the mist and the ghost are still
-      // there, nothing moves.
+      // there, nothing moves. The falling ghosts are not drawn in
+      // the static frame: a frozen mid-air ghost reads as a smudge,
+      // and reduced motion means no drift at all.
+      fallGhosts.length = 0;
       draw(0);
       return () => {
         window.removeEventListener("resize", resize);
@@ -274,7 +384,10 @@ export default function EffectsCanvas() {
       window.removeEventListener("mousemove", onMouse);
       window.removeEventListener("spectre:burst", onBurst);
     };
-  }, []);
+    // Re-run when the route changes, so the falling ghosts turn off
+    // on the serious pages and back on everywhere else.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fallingOff]);
 
   return (
     <canvas

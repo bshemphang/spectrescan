@@ -12,14 +12,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import GhostShape from "./GhostShape";
 
 export default function GhostToTop() {
   const [scrolled, setScrolled] = useState(false);
   const [footerVisible, setFooterVisible] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [textBlocked, setTextBlocked] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [reduced, setReduced] = useState(false);
+  // The layout persists across client-side navigation, so the
+  // effect re-runs on every route change: otherwise the
+  // data-ghost-hide elements on a freshly opened scan page would
+  // never be observed.
+  const pathname = usePathname();
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -51,14 +58,33 @@ export default function GhostToTop() {
     });
     setPanelOpen(document.body.dataset.panelOpen === "true");
 
+    // Hide while any element marked data-ghost-hide is on screen:
+    // the bubble-map footer paragraph carries it, so the button
+    // never covers map footer text on a narrow phone while scrolling
+    // (measured at 390px). The footer observer above only covers
+    // the page footer.
+    let hideObserver: IntersectionObserver | null = null;
+    const hideTargets = document.querySelectorAll("[data-ghost-hide]");
+    if (hideTargets.length > 0) {
+      hideObserver = new IntersectionObserver(
+        (entries) => {
+          setTextBlocked(entries.some((e) => e.isIntersecting));
+        },
+        { threshold: 0 },
+      );
+      hideTargets.forEach((el) => hideObserver?.observe(el));
+    }
+
     return () => {
       window.removeEventListener("scroll", onScroll);
       footerObserver?.disconnect();
       bodyObserver.disconnect();
+      hideObserver?.disconnect();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
-  const visible = scrolled && !footerVisible && !panelOpen;
+  const visible = scrolled && !footerVisible && !panelOpen && !textBlocked;
 
   const goTop = () => {
     if (reduced) {

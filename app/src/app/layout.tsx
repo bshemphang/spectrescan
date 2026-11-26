@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Creepster, Fraunces, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import EffectsCanvas from "@/components/EffectsCanvas";
@@ -10,10 +11,11 @@ const fraunces = Fraunces({
   weight: ["500", "600", "700"],
 });
 
-// Halloween display face for the dossier headings. Creepster only
+// Halloween display face for page headings. Creepster only
 // ships weight 400, so it is used for short headings at 24px and
-// up, never for body text. The dossier page then uses two families
-// (Geist Mono plus Creepster); home and how-it-works keep Fraunces.
+// up, never for body text. Every page uses two families at most:
+// Creepster for h1s, Fraunces for section headings, Geist Mono
+// for the terminal voice.
 const creepster = Creepster({
   variable: "--font-creepster",
   subsets: ["latin"],
@@ -52,15 +54,22 @@ export default function RootLayout(props: LayoutProps<"/">) {
         </a>
         {/* One canvas effects layer over the page (z-1): mist, particles
             and the drifting ghost, above the hero video (z-0), below the
-            page content (z-2). Colours come from the CSS variables. */}
-        <EffectsCanvas />
+            page content (z-2). Colours come from the CSS variables.
+            Both floating layers read the pathname, so they sit behind
+            Suspense: the shell prerenders and the pathname streams in,
+            instead of blocking the prerender. */}
+        <Suspense fallback={null}>
+          <EffectsCanvas />
+        </Suspense>
         <div aria-hidden className="atmosphere">
           <div className="atmosphere-grid" />
           <div className="atmosphere-glow" />
           <div className="atmosphere-grain" />
         </div>
         {props.children}
-        <GhostToTop />
+        <Suspense fallback={null}>
+          <GhostToTop />
+        </Suspense>
       </body>
     </html>
   );

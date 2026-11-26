@@ -1,13 +1,22 @@
-// SpectreScan — POST /api/scan (spec REQ-1, REQ-5, NFR-2).
-// Validates the address, runs the deterministic engine, adds the LLM
-// verdict, caches for 5 minutes (at most 200 entries, oldest first
-// out). The scan result never depends on the LLM: if the explainer
-// fails, the findings still ship. A retryExplainer flag re-runs only
-// the explainer against a fresh cached result, so the verdict can be
+// SpectreScan — /api/scan (spec REQ-1, REQ-5, NFR-2).
+// POST validates the address, runs the deterministic engine, adds
+// the LLM verdict, and caches for 5 minutes. GET does the same read
+// for the public API and the badge route: one endpoint, one cache,
+// one rate limit, so a badge or a docs example never scans twice.
+// The scan result never depends on the LLM: if the explainer fails,
+// the findings still ship. A retryExplainer flag re-runs only the
+// explainer against a fresh cached result, so the verdict can be
 // retried without a full rescan.
 
-import { buildLocalVerdict, explainScan } from "@/lib/explainer";
-import { isValidAddress, scanContract } from "@/lib/engine/scan";
+import { isValidAddress } from "@/lib/engine/scan";
+import { runScan, retryVerdictOnly } from "@/lib/scanApi";
+import {
+  cacheGet,
+  cachePut,
+  clientIp,
+  rateLimited,
+  RATE_LIMIT_MESSAGE,
+} from "@/lib/scanCache";
 import type { ScanResult } from "@/lib/engine/types";
 
 // NOTE: no `runtime` / `dynamic` / `maxDuration` segment configs here —
@@ -17,48 +26,34 @@ import type { ScanResult } from "@/lib/engine/types";
 // so the route stays within normal serverless limits on hosts that allow
 // ~60s functions (Render free tier; see README for deployment notes).
 
-const cache = new Map<string, { at: number; result: ScanResult }>();
-const CACHE_MS = 5 * 60 * 1000;
-// Bounded cache: at most 200 entries, oldest first out. An unbounded
-// Map would grow with every unique address scanned until the process
-// ran out of memory.
-const CACHE_MAX = 200;
-
-function cachePut(key: string, result: ScanResult): void {
-  if (!cache.has(key) && cache.size >= CACHE_MAX) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
-  }
-  cache.set(key, { at: Date.now(), result });
+function rateLimitResponse(): Response {
+  return Response.json(
+    { error: RATE_LIMIT_MESSAGE },
+    { status: 429, headers: { "Retry-After": "60" } },
+  );
 }
 
-// Minimal per-instance rate limit: 60 scans per rolling minute. This is a
-// public, unauthenticated tool, so the limit only slows casual abuse; it
-// is not a security boundary. On multi-instance hosts it applies per
-// instance. Fail-open by design: the limiter is three lines with no
-// external dependency, so there is nothing to fail.
-const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 60;
-let rateWindowStart = 0;
-let rateCount = 0;
-
-function rateLimited(): boolean {
-  const now = Date.now();
-  if (now - rateWindowStart >= RATE_WINDOW_MS) {
-    rateWindowStart = now;
-    rateCount = 0;
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const address = (url.searchParams.get("address") ?? "").trim();
+  // Validate before rate limiting: an invalid address must never
+  // burn budget, or garbage requests alone could lock everyone out.
+  if (!isValidAddress(address)) {
+    return Response.json(
+      { error: "That is not a valid contract address. Use 0x followed by 40 hex characters." },
+      { status: 400 },
+    );
   }
-  rateCount += 1;
-  return rateCount > RATE_MAX;
+  if (rateLimited(clientIp(request))) return rateLimitResponse();
+  const key = address.toLowerCase();
+  const hit = cacheGet(key);
+  if (hit) return Response.json(hit);
+  const result = await runScan(address);
+  cachePut(key, result);
+  return Response.json(result);
 }
 
 export async function POST(request: Request) {
-  if (rateLimited()) {
-    return Response.json(
-      { error: "Too many scans. Wait a minute and try again." },
-      { status: 429, headers: { "Retry-After": "60" } },
-    );
-  }
   let body: unknown;
   try {
     body = await request.json();
@@ -73,46 +68,27 @@ export async function POST(request: Request) {
     typeof body === "object" && body !== null && "retryExplainer" in body
       ? (body as { retryExplainer?: unknown }).retryExplainer === true
       : false;
+  // Validate before rate limiting: an invalid address must never
+  // burn budget, or garbage requests alone could lock everyone out.
   if (!isValidAddress(address)) {
     return Response.json(
       { error: "That is not a valid contract address. Use 0x followed by 40 hex characters." },
       { status: 400 },
     );
   }
+  if (rateLimited(clientIp(request))) return rateLimitResponse();
   const key = address.trim().toLowerCase();
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) {
-    if (retryExplainer && !hit.result.isEOA) {
-      // Verdict-only retry: the engine result is still fresh, so only
-      // re-run the explainer and update the cached verdict. A failed
-      // retry falls back to the local verdict, same as a fresh scan.
-      // Copy-on-write: the cached object is never mutated in place,
-      // so a failed or concurrent retry cannot downgrade the verdict
-      // every later visitor reads. A wallet has no verdict to retry.
-      const explanation = await explainScan(hit.result);
-      const updated: ScanResult = {
-        ...hit.result,
-        explanation: explanation ?? buildLocalVerdict(hit.result),
-        explanationLocal: explanation === null,
-        explainerFailed: explanation === null,
-      };
+  const hit = cacheGet(key);
+  if (hit) {
+    if (retryExplainer && !hit.isEOA) {
+      const updated = await retryVerdictOnly(hit);
       cachePut(key, updated);
       return Response.json(updated);
     }
-    return Response.json(hit.result);
+    return Response.json(hit);
   }
 
-  const result = await scanContract(address);
-  // A wallet address needs no verdict: there is nothing to explain.
-  // The EOA panel in the UI states the fact in plain words.
-  // When the LLM explainer fails, the verdict is written from the
-  // findings instead, so the verdict area never shows a failure.
-  const explanation = result.isEOA ? null : await explainScan(result);
-  result.explanation = result.isEOA
-    ? null
-    : (explanation ?? buildLocalVerdict(result));
-  result.explanationLocal = !result.isEOA && explanation === null;
-  result.explainerFailed = explanation === null && !result.isEOA;
+  const result = await runScan(address);
   cachePut(key, result);
   return Response.json(result);
 }

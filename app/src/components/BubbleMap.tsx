@@ -224,7 +224,7 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
 // the raw net balance keeps the true proportions. The share shown
 // under each bubble is still its share of total supply.
 export function pack(
-  items: Array<{ address: string; share: number | null; netBalance: string; kind: Kind }>,
+  items: Array<{ address: string; share: number | null; netBalance: string; kind: Kind; rank?: number }>,
   width: number,
   height: number,
 ): Bubble[] {
@@ -284,9 +284,11 @@ export function pack(
       address: item.address,
       share: item.share,
       kind: item.kind,
-      // placed grows in sorted order (biggest mover first), so the
-      // position in the placed list is the rank by net movement.
-      rank: placed.length + 1,
+      // A rank passed in (from the full set, before any category
+      // filter) is kept, so filtering never renumbers the bubbles:
+      // #1 stays #1 even when only holders are shown. Without one,
+      // the position in the placed list is the rank by net movement.
+      rank: item.rank ?? placed.length + 1,
     });
   }
   return placed;
@@ -342,6 +344,24 @@ export default function BubbleMap({
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [copied, setCopied] = useState<"idle" | "ok" | "failed">("idle");
+  // Category filter: null means show everything. A set means show
+  // only those kinds. There is no dev-wallet category: the engine
+  // cannot identify the deployer from the data it fetches, so the
+  // first minter is the closest match and is already a category.
+  const [filter, setFilter] = useState<Set<Kind> | null>(null);
+
+  function toggleKind(kind: Kind) {
+    setSelected(null);
+    setCopied("idle");
+    setFilter((prev) => {
+      if (prev === null) return new Set([kind]);
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      if (next.size === 0 || next.size === 5) return null;
+      return next;
+    });
+  }
 
   // Escape closes the detail panel. Nothing else on the page binds it.
   useEffect(() => {
@@ -425,15 +445,35 @@ export default function BubbleMap({
             : "holder";
     return { ...h, kind };
   });
-  const bubbles = pack(items, 600, 380);
+  // Ranks are fixed on the full set before any filter, with the
+  // same comparator pack() uses, so a filtered view never
+  // renumbers: #1 stays #1 when only holders are shown.
+  const rankedItems = [...items]
+    .sort((a, b) => {
+      const d = BigInt(b.netBalance) - BigInt(a.netBalance);
+      return d > 0n ? 1 : d < 0n ? -1 : 0;
+    })
+    .map((item, i) => ({ ...item, rank: i + 1 }));
+  const shownItems =
+    filter === null
+      ? rankedItems
+      : rankedItems.filter((i) => filter.has(i.kind));
+  const bubbles = pack(shownItems, 600, 380);
   const edges = visibleEdges(bubbles, summary.biggestMoves);
   // Special categories that are not among the shown bubbles. The map
   // says so plainly instead of leaving the user hunting for purple,
   // green, yellow, or ember that is not there. Holder is never
   // absent: every shown bubble that is not special is a holder.
-  const absentSpecial = absentSpecialKinds(bubbles.map((b) => b.kind));
-  const shownShare = items.reduce((s, i) => s + (i.share ?? 0), 0);
-  const remainder = Math.max(0, 100 - shownShare);
+  // Absence is judged on the full set, never on a filtered view:
+  // hiding holders with the filter must not claim the minter is
+  // missing from the window.
+  const absentSpecial = absentSpecialKinds(rankedItems.map((b) => b.kind));
+  const shownShare = shownItems.reduce((s, i) => s + (i.share ?? 0), 0);
+  // The remainder is always judged on the full set, never on a
+  // filtered view: hiding bubbles with the filter must not inflate
+  // the "did not move" share.
+  const fullShare = items.reduce((s, i) => s + (i.share ?? 0), 0);
+  const remainder = Math.max(0, 100 - fullShare);
   // formatShare rounds 99.9996% to "100.0%", which reads wrong next
   // to a shown share of 0.0004%. Near 100, print four decimals.
   const remainderLabel =
@@ -445,7 +485,7 @@ export default function BubbleMap({
     shownShare > 99 ? `${shownShare.toFixed(4)}%` : formatShare(shownShare);
   const active = hovered ?? selected;
   const selectedEntry = selected
-    ? items.find((i) => i.address.toLowerCase() === selected.toLowerCase())
+    ? rankedItems.find((i) => i.address.toLowerCase() === selected.toLowerCase())
     : undefined;
   const selectedBubble = selected
     ? bubbles.find((b) => b.address.toLowerCase() === selected.toLowerCase())
@@ -489,10 +529,70 @@ export default function BubbleMap({
             : "Partial window: the scan stopped at the event cap, so these bubbles cover only part of the window."}
         </p>
       )}
-      {absentSpecial.length > 0 && (
+      {filter === null && absentSpecial.length > 0 && (
         <p className="mb-3 font-mono text-xs leading-relaxed text-[var(--muted)]">
           No {absentSpecial.map((k) => KIND_STYLE[k].label).join(", ")}{" "}
           moved in this window, so those colors are not on this map.
+        </p>
+      )}
+      {/* Category filter: show only the kinds picked. Chips carry a
+          count, kinds missing from the window are disabled, and the
+          active chip glows ember on a violet border. Ranks never
+          renumber: they are fixed on the full set. */}
+      <div
+        className="mb-3 flex flex-wrap gap-2"
+        role="group"
+        aria-label="Show only these kinds of wallets"
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setFilter(null);
+            setSelected(null);
+          }}
+          aria-pressed={filter === null}
+          className={`rounded-full border px-3 py-1.5 font-mono text-xs transition-[border-color,color,box-shadow] ${
+            filter === null
+              ? "border-spectral text-ember shadow-[0_0_16px_rgba(240,163,94,0.35)]"
+              : "border-white/15 text-bone-dim hover:border-white/30 hover:text-bone"
+          }`}
+        >
+          All ({items.length})
+        </button>
+        {(["minter", "contract", "pair", "burn", "holder"] as Kind[]).map(
+          (k) => {
+            const count = items.filter((i) => i.kind === k).length;
+            const active = filter !== null && filter.has(k);
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => toggleKind(k)}
+                disabled={count === 0}
+                aria-pressed={active}
+                title={
+                  count === 0
+                    ? `${KIND_STYLE[k].label} did not move in this window`
+                    : `Show only ${KIND_STYLE[k].label}`
+                }
+                className={`rounded-full border px-3 py-1.5 font-mono text-xs transition-[border-color,color,box-shadow] disabled:cursor-not-allowed disabled:opacity-40 ${
+                  active
+                    ? "border-spectral text-ember shadow-[0_0_16px_rgba(240,163,94,0.35)]"
+                    : "border-white/15 text-bone-dim hover:border-white/30 hover:text-bone"
+                }`}
+              >
+                {KIND_STYLE[k].label} ({count})
+              </button>
+            );
+          },
+        )}
+      </div>
+      {filter !== null && (
+        <p className="mb-3 font-mono text-xs leading-relaxed text-[var(--muted)]">
+          Showing only{" "}
+          {[...filter].map((k) => KIND_STYLE[k].label).join(", ")}:{" "}
+          {shownItems.length} of {items.length} bubbles. Ranks are from
+          the full set, so #1 stays #1.
         </p>
       )}
       <svg
@@ -927,14 +1027,28 @@ export default function BubbleMap({
         </div>
       )}
 
-      <p className="mt-3 font-mono text-xs leading-relaxed text-[var(--muted)]">
-        Top {items.length} holders shown, {shownLabel} of supply. The
-        remaining {remainderLabel} did not move in the scanned window
-        or sits with smaller holders. This is movement, not lifetime
-        holdings: an address that bought before the window and held
-        still shows nothing here. Little ghosts show the biggest moves
-        between the wallets above. A ghost is movement, not proof of
-        anything wrong.
+      <p
+        data-ghost-hide
+        className="mt-3 font-mono text-xs leading-relaxed text-[var(--muted)]"
+      >
+        {filter === null ? (
+          <>
+            Top {items.length} holders shown, {shownLabel} of supply. The
+            remaining {remainderLabel} did not move in the scanned
+            window or sits with smaller holders.
+          </>
+        ) : (
+          <>
+            Showing {shownItems.length} of {items.length} bubbles,{" "}
+            {shownLabel} of supply. The remaining {remainderLabel} did
+            not move in the scanned window or sits with smaller
+            holders.
+          </>
+        )}{" "}
+        This is movement, not lifetime holdings: an address that bought
+        before the window and held still shows nothing here. Little
+        ghosts show the biggest moves between the wallets above. A
+        ghost is movement, not proof of anything wrong.
       </p>
     </section>
   );

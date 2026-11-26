@@ -41,7 +41,11 @@ function getCtx(): AudioContext | null {
 }
 
 // Two soft sine notes (C5 then G5) under a breath of filtered noise:
-// a whisper, not an alarm. Total length about 1.4 seconds.
+// a whisper, not an alarm. Total length about 1.4 seconds. The master
+// peaks at 0.22: the old 0.05 peak was near inaudible on phone
+// speakers, which is why the toggle seemed dead. Still soft, and the
+// toggle always plays a preview when turned on, so the control is
+// never silent.
 export function playVerdictChime(): void {
   const ac = getCtx();
   if (!ac) return;
@@ -49,7 +53,7 @@ export function playVerdictChime(): void {
     const now = ac.currentTime;
     const master = ac.createGain();
     master.gain.setValueAtTime(0.0001, now);
-    master.gain.exponentialRampToValueAtTime(0.05, now + 0.05);
+    master.gain.exponentialRampToValueAtTime(0.22, now + 0.05);
     master.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
     master.connect(ac.destination);
     for (const [freq, at] of [
