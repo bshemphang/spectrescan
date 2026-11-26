@@ -3,12 +3,19 @@
 //  - adding a finding can NEVER lower the score (monotonic),
 //  - the same findings ALWAYS produce the same score (deterministic),
 //  - no findings → 0.
+//
+// The weights are calibrated so a single finding of the top severities
+// lands where it should: one Critical alone reaches Possessed (75+),
+// one High alone reaches Haunted (50+). A backdoor must never read as
+// "mildly scary". Medium and low stay small so a clean token that
+// accumulates a few mediums (e.g. CAKE: mintable + V3-unverified +
+// holders-outside-pool) still reads Mildly haunted, not Haunted.
 
 import type { Finding, RiskBand, Severity } from "./types";
 
 export const SEVERITY_WEIGHTS: Record<Severity, number> = {
-  critical: 40,
-  high: 25,
+  critical: 75,
+  high: 50,
   medium: 12,
   low: 5,
   info: 0,

@@ -71,11 +71,37 @@ describe("scoreFindings", () => {
     for (const severity of ["critical", "high", "medium", "low", "info"] as Severity[]) {
       expect(weightFor(severity)).toBeGreaterThanOrEqual(0);
     }
-    expect(weightFor("critical")).toBe(40);
-    expect(weightFor("high")).toBe(25);
+    expect(weightFor("critical")).toBe(75);
+    expect(weightFor("high")).toBe(50);
     expect(weightFor("medium")).toBe(12);
     expect(weightFor("low")).toBe(5);
     expect(weightFor("info")).toBe(0);
+  });
+
+  it("one critical finding alone reaches Possessed", () => {
+    const crit: Finding = {
+      id: "x",
+      check: "R2",
+      severity: "critical",
+      title: "x",
+      detail: "x",
+      evidence: [],
+      weight: weightFor("critical"),
+    };
+    expect(bandFor(scoreFindings([crit]))).toBe("Possessed — do not touch");
+  });
+
+  it("one high finding alone reaches Haunted", () => {
+    const high: Finding = {
+      id: "x",
+      check: "R2",
+      severity: "high",
+      title: "x",
+      detail: "x",
+      evidence: [],
+      weight: weightFor("high"),
+    };
+    expect(bandFor(scoreFindings([high]))).toBe("Haunted");
   });
 });
 

@@ -149,15 +149,19 @@ export async function lpBurnFinding(
   const lpTotal = await callTotalSupply(pair.pairAddress);
   if (lpTotal === null || lpTotal === 0n) {
     // V3-style concentrated-liquidity pools have no totalSupply; slot0()
-    // exists only on them. A V3 pool has no LP token to burn-check.
+    // exists only on them. A V3 pool has no LP token to burn-check — but
+    // that is NOT a clean bill of health. Liquidity sits in NFT positions
+    // owned by individual providers, and those positions cannot be
+    // enumerated from public RPC data (no Transfer-log access), so their
+    // lock status is unknown. Never present that as "nothing to see here".
     const slot0 = await callSlot0(pair.pairAddress);
     if (slot0 !== null) {
       return finding(
-        "lp-v3-pool",
+        "lp-v3-unverified",
         "R7",
-        "info",
-        "Concentrated-liquidity (V3) pool",
-        "This pair is a V3-style pool, so there is no LP token to burn or lock. Liquidity sits in concentrated positions owned by individual providers.",
+        "medium",
+        "Concentrated-liquidity (V3) pool — lock status unknown",
+        "This pair is a V3-style pool, so there is no LP token to burn or lock. Liquidity sits in concentrated NFT positions owned by individual providers, and those positions cannot be checked from public data. Providers can withdraw their liquidity at any time, so do not treat this liquidity as locked.",
         [`pair ${pair.pairAddress}`, "slot0() present, totalSupply() reverts"],
       );
     }
@@ -207,6 +211,11 @@ export async function lpBurnFinding(
 }
 
 // R8 — top-holder concentration from a bounded Transfer-log scan.
+// The log scan covers only the last 20,000 blocks, about 17 hours on
+// BSC. Every finding built from that scan says so in its detail: older
+// transfers fall out of view and must not be hidden from the reader.
+const HOLDER_WINDOW_NOTE =
+  " The scan covered only the last 20,000 blocks (about 17 hours on BSC), so transfers older than that are not in view.";
 export async function holderConcentrationFinding(
   tokenAddress: string,
   pairs: DexPair[] | null,
@@ -303,7 +312,7 @@ export async function holderConcentrationFinding(
       "R8",
       "info",
       `${pairShare.toFixed(1)}% of supply sits in the pool`,
-      "A healthy share of the supply is in the trading pair. (Transfer-log holder data was unavailable, so this is a pair-share proxy, not a full holder list.)",
+      "Transfer-log holder data was unavailable, so this is a pair-share proxy, not a full holder list. A pool share in this range says little about who holds the rest of the supply, so this reading is inconclusive — it does not mean holders are distributed.",
       [`pair holds ${pairShare.toFixed(1)}% of total supply`, `pair ${pair.pairAddress}`],
     );
   }
@@ -318,7 +327,8 @@ export async function holderConcentrationFinding(
       "R8",
       "high",
       `Top 10 holders own ${share.toFixed(1)}%`,
-      "Almost the whole supply sits in ten wallets. A small group can crash the price by selling together.",
+      "Almost the whole supply sits in ten wallets. A small group can crash the price by selling together." +
+        HOLDER_WINDOW_NOTE,
       [`top-10 share = ${share.toFixed(1)}%`, `scanned last ${BLOCK_WINDOW} blocks`],
     );
   }
@@ -328,7 +338,8 @@ export async function holderConcentrationFinding(
       "R8",
       "medium",
       `Top 10 holders own ${share.toFixed(1)}%`,
-      "Over half the supply sits in ten wallets. That is a concentrated holder base with real dump risk.",
+      "Over half the supply sits in ten wallets. That is a concentrated holder base with real dump risk." +
+        HOLDER_WINDOW_NOTE,
       [`top-10 share = ${share.toFixed(1)}%`, `scanned last ${BLOCK_WINDOW} blocks`],
     );
   }
@@ -338,7 +349,8 @@ export async function holderConcentrationFinding(
       "R8",
       "low",
       `Top 10 holders own ${share.toFixed(1)}%`,
-      "Holder concentration is moderate — worth watching, but not extreme.",
+      "Holder concentration is moderate — worth watching, but not extreme." +
+        HOLDER_WINDOW_NOTE,
       [`top-10 share = ${share.toFixed(1)}%`, `scanned last ${BLOCK_WINDOW} blocks`],
     );
   }
@@ -347,7 +359,8 @@ export async function holderConcentrationFinding(
     "R8",
     "info",
     `Top 10 holders own ${share.toFixed(1)}%`,
-    "Supply looks reasonably distributed across holders in the scanned window.",
+    "Supply looks reasonably distributed across holders in the scanned window." +
+      HOLDER_WINDOW_NOTE,
     [`top-10 share = ${share.toFixed(1)}%`, `scanned last ${BLOCK_WINDOW} blocks`],
   );
 }

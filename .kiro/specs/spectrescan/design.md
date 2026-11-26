@@ -77,13 +77,15 @@ interface Finding {
 
 | severity | weight |
 |----------|--------|
-| critical | 40     |
-| high     | 25     |
+| critical | 75     |
+| high     | 50     |
 | medium   | 12     |
 | low      | 5      |
 | info     | 0      |
 
-Weights are fixed constants in `scoring.ts`. Monotonicity follows directly:
+Weights are fixed constants in `scoring.ts`. One Critical finding alone
+reaches Possessed (75+) and one High alone reaches Haunted (50+), so a
+backdoor never reads as mildly scary. Monotonicity follows directly:
 score is a sum of non-negative weights, so adding findings can only raise it.
 
 ### Context-aware severity (scan.ts)
@@ -93,19 +95,29 @@ means different things under different ownership:
 
 - **Mintable:** HIGH when the owner is a wallet or unknown. MEDIUM when
   minting is governed by a verified contract (its rules are public code,
-  e.g. a MasterChef-style emission contract). One level lower again when a
-  visible supply cap (`maxSupply`) exists.
+  e.g. a MasterChef-style emission contract). One level lower again when
+  an enforced supply cap backed by a hardcoded constant exists (a
+  `constant` / `immutable` cap or a literal bound required in the mint
+  path, or an ERC20Capped inheritance with a literal cap). A cap held in
+  a mutable variable never counts, and neither does a cap that only
+  appears in a comment or a cap equal to the initial supply.
 - **Owner is a contract:** LOW when that contract is verified on Sourcify
   (its controller is transparent), HIGH when it is not.
 - **Combination rule:** deployer-minted supply AND no trading pair upgrades
   the no-pair finding to HIGH — no exit plus one holder with everything.
   This is a distinct combined fact, not double-counting.
-- **Deployer-mint pattern (R2):** the constructor assigns the entire supply
-  to `msg.sender`'s balance (or `_mint(msg.sender, <total>)`). Detected by
-  brace-matching the constructor body and matching the supply variable.
+- **Deployer-mint pattern (R2):** the constructor or an `initialize()`
+  function assigns the entire supply to `msg.sender`'s balance (or
+  `_mint(msg.sender, <total>)`). The supply variable may be declared at
+  the top level (a state-var initializer) rather than inside the
+  function body. Detected by brace-matching the function body and
+  matching the supply variable; a single `_mint` to `msg.sender` of a
+  hardcoded amount also counts.
 - **V3 pools (R7):** concentrated-liquidity pools have no `totalSupply()`;
-  a successful `slot0()` call identifies them and the finding reports that
-  there is no LP token to burn-check.
+  a successful `slot0()` call identifies them. Their NFT positions cannot
+  be checked from public data, so the finding reports the lock status as
+  unknown (medium) and warns that providers can withdraw at any time —
+  never as a clean bill of health.
 - **Holder concentration (R8):** public BSC RPCs refuse `eth_getLogs`
   (verified 2026-11-08: dataseed1/2 return -32005 "limit exceeded" even for
   100-block ranges; publicnode rate-limits). The log scan is attempted
@@ -123,7 +135,9 @@ insensitive, Solidity-aware):
 - trading gate: `tradingEnabled`, `tradingOpen`, `enableTrading`, `startTrading`
 - max tx/wallet: `maxTxAmount`, `maxWallet`, `_maxTx`, `maxWalletAmount`
 - fee setter: `setTax`, `setFee`, `setBuyFee`, `setSellFee`, `updateFee`
-- mint: `function mint(`, `function _mint(` called from owner-only function
+- mint: `function mint(` with public/external visibility only (internal
+  and private mint helpers are never flagged; the detail text says
+  "public mint function")
 - pause: `function pause(`, `whenNotPaused`, `Pausable`
 - hidden owner: `owner()` returns a contract address (code at owner address
   is non-empty) — checked on-chain, not from source

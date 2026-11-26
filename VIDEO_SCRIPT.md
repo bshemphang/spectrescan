@@ -27,8 +27,8 @@ score can't lie."
 
 [Paste SELO: 0x903449fdca80acec639941dc3c84f439cbad5df7. Click Scan.]
 
-"Here's SELO — a real token. Watch the ghost meter. Fifty-five out of a
-hundred: Haunted. The entire supply was minted to the deployer's wallet at
+"Here's SELO — a real token. Watch the ghost meter. One hundred out of a
+hundred: Possessed, do not touch. The entire supply was minted to the deployer's wallet at
 launch — that's line 22 of the source — and there is no trading pair, so
 there is nowhere to sell. One address holds everything."
 
@@ -38,7 +38,7 @@ there is nowhere to sell. One address holds everything."
 
 [Click "Scan another", paste CAKE: 0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82.]
 
-"And here's CAKE, PancakeSwap's token. Thirty-four: Mildly haunted. It has
+"And here's CAKE, PancakeSwap's token. Forty-six: Mildly haunted. It has
 a mint function, but minting is governed by a verified contract whose rules
 are public code — so it scores lower. The ghost's verdict explains all of
 this in plain English, with the lines cited."

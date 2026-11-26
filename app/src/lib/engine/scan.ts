@@ -98,7 +98,10 @@ export async function scanContract(rawAddress: string): Promise<ScanResult> {
     if (deployerMint) findings.push(deployerMint);
 
     // Mintable nuance: governed-by-verified-contract mints score lower,
-    // and a visible supply cap lowers them one more level.
+    // and a visible supply cap lowers them one more level. The cap
+    // downgrade only fires on a hardcoded constant (mintHasCap counts
+    // only constant / immutable / literal enforced caps, never a mutable
+    // variable) — a cap the owner can move is not a cap.
     const mintable = findings.find((f) => f.id === "mintable");
     if (mintable) {
       if (ownerIsContract === true && ownerVerified) {

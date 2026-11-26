@@ -7,9 +7,9 @@ and on-chain footprint, then tells you in plain English whether it is safe
 to touch — with the exact source lines cited.
 
 ```
-SELO  (0x9034…5df7)  →  score 55/100 — Haunted
-AGIO  (0x07D1…696dA) →  score 54/100 — Haunted
-CAKE  (0x0E09…1cE82) →  score 34/100 — Mildly haunted
+SELO  (0x9034…5df7)  →  score 100/100 — Possessed — do not touch
+AGIO  (0x07D1…696dA) →  score 100/100 — Possessed — do not touch
+CAKE  (0x0E09…1cE82) →  score 46/100 — Mildly haunted
 ```
 
 > **SpectreScan is not an audit. Never invest more than you can afford to lose.**

@@ -1,6 +1,18 @@
 // SpectreScan rules engine — source-pattern checks R2–R4 (spec: design.md).
 // Pattern matches on verified source text only; every hit carries the exact
 // file:line evidence. No source → no guesses (callers report "unknown").
+//
+// Honesty rules for the cap checks (Kira deep review, 2026-11-26):
+//  - A cap only counts when it is enforced where the power is used: the
+//    require must sit inside the setter / mint function body, not anywhere
+//    in the file, and never in a comment. Comments are stripped (with line
+//    numbers preserved) before the cap checks run.
+//  - A cap of 100 percent is not a cap: a fee bound of 100 (percent) or
+//    10000 (basis points) does not count.
+//  - A supply cap only counts when it is backed by a hardcoded constant:
+//    a `constant` / `immutable` declaration, a numeric literal bound, or
+//    an ERC20Capped inheritance with a literal cap. A mutable state
+//    variable does not count.
 
 import type { Finding, SourceFile } from "./types";
 import { weightFor } from "./scoring";
@@ -47,14 +59,6 @@ const PATTERNS: Pattern[] = [
     regex: /function\s+\w*(set|update)\w*(Fee|Tax)\w*\s*\(/i,
   },
   {
-    id: "mintable",
-    title: "Owner can mint new tokens",
-    detail:
-      "The contract has a public mint function. The owner can create new supply at any time, diluting every existing holder.",
-    severity: "high",
-    regex: /function\s+mint\s*\(/i,
-  },
-  {
     id: "pausable",
     title: "Owner can pause transfers",
     detail:
@@ -63,6 +67,17 @@ const PATTERNS: Pattern[] = [
     regex: /function\s+pause\s*\(|contract\s+\w+\s+is\s+[^{]*Pausable|whenNotPaused/i,
   },
 ];
+
+// The mintable check is not in PATTERNS: its regex must see the function
+// visibility, so it runs on the whole file text (see findPublicMintLines).
+const MINTABLE = {
+  id: "mintable",
+  title: "Owner can mint new tokens",
+  detail:
+    "The contract has a public mint function. The owner can create new supply at any time, diluting every existing holder.",
+  severity: "high" as const,
+  check: "R3",
+};
 
 function findLines(content: string, regex: RegExp): number[] {
   const lines = content.split("\n");
@@ -74,6 +89,22 @@ function findLines(content: string, regex: RegExp): number[] {
     if (hits.length >= 3) break;
   }
   return hits;
+}
+
+/** Lines of public/external `mint` functions. Visibility is checked in the
+ *  function header (up to the opening brace), so internal/private mint
+ *  helpers are never flagged — the detail text says "public mint function"
+ *  and the code must match. The pattern spans newlines, so multi-line
+ *  signatures are handled. */
+function findPublicMintLines(content: string): number[] {
+  const re = /function\s+mint\s*\([^)]*\)\s*(public|external)\b/gi;
+  const lines: number[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    lines.push(content.slice(0, m.index).split("\n").length);
+    if (lines.length >= 3) break;
+  }
+  return lines;
 }
 
 /** Run all source-pattern checks against verified source files. */
@@ -89,7 +120,7 @@ export function runSourceChecks(sources: SourceFile[]): Finding[] {
     if (evidence.length > 0) {
       findings.push({
         id: pattern.id,
-        check: pattern.id === "mintable" ? "R3" : pattern.id === "pausable" ? "R4" : "R2",
+        check: pattern.id === "pausable" ? "R4" : "R2",
         severity: pattern.severity,
         title: pattern.title,
         detail: pattern.detail,
@@ -98,76 +129,388 @@ export function runSourceChecks(sources: SourceFile[]): Finding[] {
       });
     }
   }
+  // Mintable, with the visibility check (comments stripped so a
+  // commented-out mint never flags; line numbers stay aligned).
+  const mintEvidence: string[] = [];
+  for (const file of sources) {
+    const lines = findPublicMintLines(stripComments(file.content));
+    for (const line of lines) mintEvidence.push(`${file.path}:${line}`);
+    if (mintEvidence.length >= 3) break;
+  }
+  if (mintEvidence.length > 0) {
+    findings.push({
+      id: MINTABLE.id,
+      check: MINTABLE.check,
+      severity: MINTABLE.severity,
+      title: MINTABLE.title,
+      detail: MINTABLE.detail,
+      evidence: mintEvidence.slice(0, 3),
+      weight: weightFor(MINTABLE.severity),
+    });
+  }
   return findings;
 }
 
-/** Check whether a fee setter has a visible cap (e.g. require(fee <= 25)). */
-export function feeHasCap(sources: SourceFile[]): boolean {
-  const joined = sources.map((s) => s.content).join("\n");
-  return /require\s*\(\s*\w*(fee|tax)\w*\s*<=/i.test(joined);
+// ------------------------------------------------------------
+// Shared helpers for the cap checks
+// ------------------------------------------------------------
+
+/** Remove // and block comments, replacing them with spaces so line
+ *  numbers (and therefore evidence) stay aligned. String literals that
+ *  contain "//" (e.g. URLs) are also blanked; the scanned function bodies
+ *  do not contain any. */
+function stripComments(content: string): string {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, " "));
 }
 
-/** Check whether minting has a visible supply cap (e.g. maxSupply). */
-export function mintHasCap(sources: SourceFile[]): boolean {
-  const joined = sources.map((s) => s.content).join("\n");
-  return /maxSupply|MAX_SUPPLY|supplyCap|_cap\b/i.test(joined);
+/** Body of a function whose signature starts at `sigIndex`: the text from
+ *  its opening `{` to the matching `}`. Null when the body cannot be
+ *  found. */
+function extractBody(
+  content: string,
+  sigIndex: number,
+): { body: string; start: number } | null {
+  const open = content.indexOf("{", sigIndex);
+  if (open === -1) return null;
+  let depth = 0;
+  for (let i = open; i < content.length; i++) {
+    if (content[i] === "{") depth++;
+    else if (content[i] === "}") {
+      depth--;
+      if (depth === 0) return { body: content.slice(open, i + 1), start: open };
+    }
+  }
+  return null;
 }
 
-/**
- * Deployer-mint check: does the constructor hand the ENTIRE supply to one
- * address (msg.sender)? Detects the pattern where a variable is assigned to
- * the total supply AND to the deployer's balance in the constructor — the
- * SELO shape: one wallet starts out holding 100% of the token.
- */
-export function deployerMintCheck(sources: SourceFile[]): Finding | null {
-  for (const file of sources) {
-    const content = file.content;
-    const ctorIndex = content.search(/constructor\s*\(/);
-    if (ctorIndex === -1) continue;
-    // Extract the constructor body with brace matching.
-    const open = content.indexOf("{", ctorIndex);
-    if (open === -1) continue;
+/** Bodies of every function whose signature matches `nameRe` (e.g.
+ *  constructor or initialize), in file order. The signature text (from
+ *  the function keyword to the opening brace) is included so callers can
+ *  read parameter names. */
+function namedFunctionBodies(
+  content: string,
+  nameRe: RegExp,
+): { body: string; start: number; signature: string }[] {
+  const out: { body: string; start: number; signature: string }[] = [];
+  const re = new RegExp(
+    nameRe.source,
+    nameRe.flags.includes("g") ? nameRe.flags : nameRe.flags + "g",
+  );
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const body = extractBody(content, m.index);
+    if (body) {
+      out.push({ ...body, signature: content.slice(m.index, body.start) });
+    }
+  }
+  return out;
+}
+
+/** Argument strings of every require(...) call in `text`, matched with
+ *  paren counting so nested calls do not break the parse. */
+function requireArgs(text: string): string[] {
+  const out: string[] = [];
+  const re = /require\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const open = m.index + m[0].length - 1; // index of "("
     let depth = 0;
-    let close = -1;
-    for (let i = open; i < content.length; i++) {
-      if (content[i] === "{") depth++;
-      else if (content[i] === "}") {
+    for (let i = open; i < text.length; i++) {
+      if (text[i] === "(") depth++;
+      else if (text[i] === ")") {
         depth--;
         if (depth === 0) {
-          close = i;
+          out.push(text.slice(open + 1, i));
           break;
         }
       }
     }
-    if (close === -1) continue;
-    const body = content.slice(open, close + 1);
-    const bodyLines = body.split("\n");
-    // Find a variable assigned to the total supply and to msg.sender's balance.
-    const totalAssign = body.match(
-      /(?:total_?|totalSupply|_total|supply)\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\b/,
-    );
-    if (!totalAssign) continue;
-    const supplyVar = totalAssign[1];
-    const deployerAssign = new RegExp(
-      `balances?_?\\s*\\[\\s*msg\\.sender\\s*\\]\\s*=\\s*${supplyVar}\\b`,
-    );
-    const mintCall = new RegExp(`_mint\\(msg\\.sender,\\s*${supplyVar}\\b`);
-    const hitLine = bodyLines.findIndex(
-      (l) => deployerAssign.test(l) || mintCall.test(l),
-    );
-    if (hitLine === -1) continue;
-    const absLine =
-      content.slice(0, open).split("\n").length + hitLine;
-    return {
-      id: "deployer-mint",
-      check: "R2",
-      severity: "high",
-      title: "Entire supply minted to the deployer at launch",
-      detail:
-        "The constructor hands the whole token supply to the deployer's wallet. One address starts out holding 100% of the supply and can sell it all at any time.",
-      evidence: [`${file.path}:${absLine}`],
-      weight: weightFor("high"),
-    };
   }
+  return out;
+}
+
+/** Raw initializer of `NAME = <expr>;` in the file, or null when the name
+ *  has no visible initializer. The `(?!=)` keeps `==` comparisons out. */
+function constantInitializer(content: string, name: string): string | null {
+  const re = new RegExp(`\\b${name}\\s*=(?!=)\\s*([^;]+);`);
+  const m = content.match(re);
+  return m ? m[1].trim() : null;
+}
+
+/** Numeric value of a `NAME = <number>` declaration, or null when the
+ *  value cannot be seen in this file. */
+function lookupNumericDeclaration(content: string, name: string): number | null {
+  const init = constantInitializer(content, name);
+  if (init === null) return null;
+  const num = init.match(/^([0-9][0-9_]*)/);
+  return num ? Number(num[1].replace(/_/g, "")) : null;
+}
+
+/** Whether the declaration of `name` carries `constant` or `immutable`
+ *  in the same statement. */
+function isConstantOrImmutable(content: string, name: string): boolean {
+  const re = new RegExp(`\\b${name}\\s*=(?!=)`, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const start = Math.max(
+      content.lastIndexOf(";", m.index),
+      content.lastIndexOf("{", m.index),
+      content.lastIndexOf("\n", m.index),
+    );
+    const segment = content.slice(start + 1, m.index);
+    if (/\b(constant|immutable)\b/.test(segment)) return true;
+  }
+  return false;
+}
+
+function normalizeExpr(expr: string): string {
+  return expr.replace(/[\s_]/g, "").toLowerCase();
+}
+
+/** The initial-supply expression, if it can be seen: the initializer of a
+ *  TOTAL_SUPPLY / INITIAL_SUPPLY constant. Used to spot a cap that is
+ *  exactly the initial supply — a 100 percent cap. */
+function initialSupplyExpr(content: string): string | null {
+  const m = content.match(
+    /\b(?:TOTAL_SUPPLY|INITIAL_SUPPLY|_totalSupply)\s*=(?!=)\s*([^;]+);/,
+  );
+  return m ? normalizeExpr(m[1]) : null;
+}
+
+// ------------------------------------------------------------
+// Fee cap (fix 1)
+// ------------------------------------------------------------
+
+/** Check whether a fee setter has a visible cap (e.g. require(fee <= 25)).
+ *  Only a require inside the setter function body counts, and a bound of
+ *  100 (percent) or 10000 (basis points) — a 100 percent cap — does not.
+ *  A named bound only counts when its declaration with a numeric value is
+ *  visible in the same file. */
+export function feeHasCap(sources: SourceFile[]): boolean {
+  for (const file of sources) {
+    const content = stripComments(file.content);
+    const setters = namedFunctionBodies(
+      content,
+      /function\s+\w*(set|update)\w*(Fee|Tax)\w*\s*\(/i,
+    );
+    for (const fn of setters) {
+      if (setterBodyHasFeeCap(fn.signature, fn.body, content)) return true;
+    }
+  }
+  return false;
+}
+
+function setterBodyHasFeeCap(
+  signature: string,
+  body: string,
+  fileContent: string,
+): boolean {
+  // The fee value is either a fee/tax-named variable or one of the
+  // setter's parameters (setters often take a short name like `f`).
+  const params = new Set<string>();
+  const paren = signature.match(/\(([^)]*)\)/);
+  if (paren) {
+    for (const part of paren[1].split(",")) {
+      const name = part.trim().split(/\s+/).pop();
+      if (name) params.add(name);
+    }
+  }
+  for (const args of requireArgs(body)) {
+    const m = args.match(
+      /([A-Za-z_][A-Za-z0-9_]*)\s*(<=|<)\s*([A-Za-z_][A-Za-z0-9_]*|[0-9][0-9_]*)/,
+    );
+    if (!m) continue;
+    const lhs = m[1];
+    if (!/fee|tax/i.test(lhs) && !params.has(lhs)) continue;
+    const bound = m[3];
+    if (/^[0-9]/.test(bound)) {
+      const value = Number(bound.replace(/_/g, ""));
+      // 100 (percent) and 10000 (basis points) both mean 100 percent.
+      if (value !== 100 && value !== 10000) return true;
+    } else {
+      const declared = lookupNumericDeclaration(fileContent, bound);
+      if (declared !== null && declared !== 100 && declared !== 10000) return true;
+    }
+  }
+  return false;
+}
+
+// ------------------------------------------------------------
+// Mint cap (fixes 1 and 4)
+// ------------------------------------------------------------
+
+/** Check whether minting has a visible, enforced supply cap.
+ *  A cap only counts when it is backed by a hardcoded constant and
+ *  enforced where minting happens:
+ *   - an ERC20Capped inheritance with a literal cap argument, or
+ *   - a require in a mint / _mint body bounding totalSupply() + amount by
+ *     a `constant` / `immutable` cap or a numeric literal bound.
+ *  A cap held in a mutable state variable does not count (fix 4), and a
+ *  cap equal to the initial supply (a 100 percent cap) does not count. */
+export function mintHasCap(sources: SourceFile[]): boolean {
+  for (const file of sources) {
+    const content = stripComments(file.content);
+    if (erc20CappedWithLiteralCap(content)) return true;
+    const mintBodies = [
+      ...namedFunctionBodies(content, /function\s+mint\s*\(/i),
+      ...namedFunctionBodies(content, /function\s+_mint\s*\(/i),
+    ];
+    for (const { body } of mintBodies) {
+      if (mintBodyHasEnforcedCap(body, content)) return true;
+    }
+  }
+  return false;
+}
+
+function erc20CappedWithLiteralCap(content: string): boolean {
+  const m = content.match(/ERC20Capped\s*\(\s*([^)]*)\)/);
+  if (!m) return false;
+  const arg = m[1].trim();
+  if (/^[0-9]/.test(arg)) return true; // literal cap, e.g. 1000000 * 10**18
+  const declared = lookupNumericDeclaration(content, arg);
+  return declared !== null;
+}
+
+function mintBodyHasEnforcedCap(body: string, fileContent: string): boolean {
+  for (const args of requireArgs(body)) {
+    const m = args.match(
+      /(?:totalSupply\s*\(\s*\)|_totalSupply|total_?supply)\s*\+\s*\w+\s*(<=|<)\s*([A-Za-z_][A-Za-z0-9_]*|[0-9][0-9_]*)\s*(?:\(\))?/i,
+    );
+    if (!m) continue;
+    const bound = m[2];
+    if (/^[0-9]/.test(bound)) return true; // hardcoded literal bound
+    if (bound === "cap") {
+      // ERC20Capped's cap() accessor: only counts with a literal cap.
+      if (erc20CappedWithLiteralCap(fileContent)) return true;
+      continue;
+    }
+    // Named bound: only a constant / immutable counts (fix 4).
+    if (!isConstantOrImmutable(fileContent, bound)) continue;
+    const init = constantInitializer(fileContent, bound);
+    if (init === null) continue;
+    // A cap equal to the initial supply is a 100 percent cap.
+    const initial = initialSupplyExpr(fileContent);
+    if (initial !== null && normalizeExpr(init) === initial) continue;
+    return true;
+  }
+  return false;
+}
+
+// ------------------------------------------------------------
+// Deployer mint (fix 5)
+// ------------------------------------------------------------
+
+/**
+ * Deployer-mint check: does the contract hand the ENTIRE supply to one
+ * address at launch? Detects the pattern where the total supply is
+ * assigned to the deployer's balance — the SELO shape: one wallet starts
+ * out holding 100% of the token.
+ *
+ * Searched in the constructor AND in initialize() functions (proxy
+ * pattern), and the supply variable may be declared at the top level
+ * (a state-var initializer) rather than inside the function body.
+ * A single _mint to msg.sender of a hardcoded amount also counts, since
+ * that is the only initial mint.
+ */
+export function deployerMintCheck(sources: SourceFile[]): Finding | null {
+  for (const file of sources) {
+    const content = stripComments(file.content);
+    const bodies = [
+      ...namedFunctionBodies(content, /constructor\s*\(/).map((b) => ({
+        ...b,
+        label: "constructor",
+      })),
+      ...namedFunctionBodies(content, /function\s+initialize\s*\(/).map((b) => ({
+        ...b,
+        label: "initialize()",
+      })),
+    ];
+    // Supply variables declared at the top level (state-var initializers).
+    const fileSupplyVars = new Set<string>();
+    for (const m of content.matchAll(
+      /\b(?:total_?supply|TOTAL_SUPPLY|_totalSupply|supply)\b\s*=(?!=)/gi,
+    )) {
+      fileSupplyVars.add(m[0].split(/\s*=/)[0].trim());
+    }
+    for (const { body, start, label } of bodies) {
+      const hit = checkDeployerMintBody(content, body, start, fileSupplyVars);
+      if (hit) {
+        return {
+          id: "deployer-mint",
+          check: "R2",
+          severity: "high",
+          title: "Entire supply minted to the deployer at launch",
+          detail:
+            `The ${label} hands the whole token supply to the deployer's wallet. One address starts out holding 100% of the supply and can sell it all at any time.`,
+          evidence: [`${file.path}:${hit}`],
+          weight: weightFor("high"),
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function checkDeployerMintBody(
+  content: string,
+  body: string,
+  bodyStart: number,
+  fileSupplyVars: Set<string>,
+): number | null {
+  const lineOf = (indexInBody: number): number =>
+    content.slice(0, bodyStart).split("\n").length +
+    body.slice(0, indexInBody).split("\n").length -
+    1;
+
+  // Supply variables: assigned inside this body, or declared at file level.
+  const supplyVars = new Set<string>(fileSupplyVars);
+  for (const m of body.matchAll(
+    /(?:total_?|totalSupply|_total|supply)\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\b/g,
+  )) {
+    supplyVars.add(m[1]);
+  }
+
+  // (a) A supply variable handed to msg.sender's balance or minted to it.
+  for (const v of supplyVars) {
+    const deployerAssign = new RegExp(
+      `balances?_?\\s*\\[\\s*msg\\.sender\\s*\\]\\s*=\\s*${v}\\b`,
+    );
+    const mintCall = new RegExp(`_mint\\(msg\\.sender,\\s*${v}\\b`);
+    const idx =
+      body.search(deployerAssign) !== -1
+        ? body.search(deployerAssign)
+        : body.search(mintCall) !== -1
+          ? body.search(mintCall)
+          : -1;
+    if (idx !== -1) return lineOf(idx);
+  }
+
+  // (b) A single _mint to msg.sender of a hardcoded amount: the only
+  // initial mint, so the deployer starts out holding everything.
+  const mintCalls = [...body.matchAll(/_mint\s*\(\s*([^,]+),/g)];
+  if (mintCalls.length === 1) {
+    const recipient = mintCalls[0][1].trim();
+    if (recipient === "msg.sender") {
+      const amount = body.slice(mintCalls[0].index! + mintCalls[0][0].length);
+      const amountHead = amount.trim();
+      // Hardcoded amount: a literal, or a file-level constant.
+      if (
+        /^[0-9]/.test(amountHead) ||
+        /^[A-Z][A-Z0-9_]*\b/.test(amountHead)
+      ) {
+        return lineOf(mintCalls[0].index!);
+      }
+    }
+  }
+
+  // (c) A single direct balance assignment of a hardcoded amount.
+  const balAssigns = [...body.matchAll(/balances?_?\s*\[\s*msg\.sender\s*\]\s*=\s*([0-9][0-9_]*)/g)];
+  if (balAssigns.length === 1) {
+    const otherAssigns = [...body.matchAll(/balances?_?\s*\[/g)].length;
+    if (otherAssigns === 1) return lineOf(balAssigns[0].index!);
+  }
+
   return null;
 }
