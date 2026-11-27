@@ -78,9 +78,14 @@ const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"] as const;
 export default function ScanReport({
   result,
   elapsed,
+  onRetryDossier,
 }: {
   result: ScanResult;
   elapsed: number | null;
+  // Called when the reader retries a failed Transfer-log read. The
+  // page re-runs the whole scan; the score cannot change because the
+  // engine is deterministic.
+  onRetryDossier?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -233,6 +238,27 @@ export default function ScanReport({
       )}
     </div>
   );
+
+  // Retry control for a failed Transfer-log read: the dossier is
+  // empty, so the identity card, bubble map, and transfer flow could
+  // not be built. Retrying re-runs the scan; the score and findings
+  // above still stand either way.
+  const dossierRetryBlock = onRetryDossier ? (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={onRetryDossier}
+        className="btn-soft inline-flex h-10 items-center gap-2 rounded-lg border border-white/15 px-4 text-sm font-medium text-bone hover:border-white/30 hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spectral"
+      >
+        <RotateCcw size={15} strokeWidth={1.5} aria-hidden />
+        Retry the transfer scan
+      </button>
+      <p className="mt-2 text-sm text-bone-dim">
+        The transfer log read failed, so the dossier below is empty.
+        Retrying re-runs the scan. The score will not change.
+      </p>
+    </div>
+  ) : null;
 
   const actions = (
     <div className="mt-10 flex flex-wrap items-center gap-3">
@@ -546,6 +572,10 @@ export default function ScanReport({
             decimals={result.token.decimals}
             symbol={result.token.symbol}
           />
+          {/* The Transfer-log read produced nothing usable, so the
+              map and flow above each say unavailable. Offer the retry
+              here, once, instead of inside each of them. */}
+          {!dossier.analysis.summary && dossierRetryBlock}
         </>
       ) : (
         <section
@@ -557,6 +587,7 @@ export default function ScanReport({
             the identity card, bubble map, and transfer flow could not be
             built. The score and findings above still stand.
           </p>
+          {dossierRetryBlock}
         </section>
       )}
 

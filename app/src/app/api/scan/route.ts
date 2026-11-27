@@ -6,7 +6,9 @@
 // The scan result never depends on the LLM: if the explainer fails,
 // the findings still ship. A retryExplainer flag re-runs only the
 // explainer against a fresh cached result, so the verdict can be
-// retried without a full rescan.
+// retried without a full rescan. A retryDossier flag re-runs the full
+// scan when the cached result's dossier is empty, so a failed
+// Transfer-log read can be retried without re-entering the address.
 
 import { isValidAddress } from "@/lib/engine/scan";
 import { runScan, retryVerdictOnly } from "@/lib/scanApi";
@@ -68,6 +70,15 @@ export async function POST(request: Request) {
     typeof body === "object" && body !== null && "retryExplainer" in body
       ? (body as { retryExplainer?: unknown }).retryExplainer === true
       : false;
+  // A dossier retry re-runs the Transfer-log read that failed. The
+  // cached scan's dossier is empty (its score and findings still
+  // stand), so the only honest retry is a fresh full scan: the engine
+  // is deterministic, so the score cannot change, and the fresh result
+  // replaces the cached one for later visitors too.
+  const retryDossier =
+    typeof body === "object" && body !== null && "retryDossier" in body
+      ? (body as { retryDossier?: unknown }).retryDossier === true
+      : false;
   // Validate before rate limiting: an invalid address must never
   // burn budget, or garbage requests alone could lock everyone out.
   if (!isValidAddress(address)) {
@@ -84,6 +95,18 @@ export async function POST(request: Request) {
       const updated = await retryVerdictOnly(hit);
       cachePut(key, updated);
       return Response.json(updated);
+    }
+    if (retryDossier && !hit.isEOA) {
+      // Only re-scan when the cached dossier is actually empty: a
+      // retry must never burn a full engine run for a scan that
+      // already has its dossier.
+      const dossierEmpty =
+        !hit.dossier || !hit.dossier.analysis?.summary;
+      if (dossierEmpty) {
+        const fresh = await runScan(address);
+        cachePut(key, fresh);
+        return Response.json(fresh);
+      }
     }
     return Response.json(hit);
   }

@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import TerminalRun from "@/components/TerminalRun";
@@ -19,46 +19,60 @@ export default function ScanPageClient({ address }: { address: string }) {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    const started = Date.now();
-    fetch("/api/scan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address }),
-    })
-      .then(async (res) => {
-        const json = (await res.json()) as ScanResult & { error?: string };
-        if (!res.ok) throw new Error(json.error ?? "Scan failed.");
-        return json;
+  // One scan runner for the first load and for a dossier retry: the
+  // retry posts retryDossier, so the route re-runs the full scan when
+  // the cached result's dossier is empty instead of handing the same
+  // empty dossier back. The progress terminal shows again, same as a
+  // fresh scan.
+  const runScan = useCallback(
+    (retryDossier: boolean) => {
+      let cancelled = false;
+      const started = Date.now();
+      setScanning(true);
+      setError(null);
+      setResult(null);
+      setElapsed(null);
+      fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, retryDossier }),
       })
-      .then((json) => {
-        if (cancelled) return;
-        setResult(json);
-        setElapsed((Date.now() - started) / 1000);
-        setScanning(false);
-        // Wallet lookups are not contract scans: they never enter the
-        // recent-scans list or the registry.
-        if (!json.isEOA) {
-          saveRecent({
-            address: json.address,
-            name: json.token.name,
-            symbol: json.token.symbol,
-            score: json.score,
-            band: json.band,
-            scannedAt: json.scannedAt,
-          });
-        }
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Scan failed. Try again.");
-        setScanning(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [address]);
+        .then(async (res) => {
+          const json = (await res.json()) as ScanResult & { error?: string };
+          if (!res.ok) throw new Error(json.error ?? "Scan failed.");
+          return json;
+        })
+        .then((json) => {
+          if (cancelled) return;
+          setResult(json);
+          setElapsed((Date.now() - started) / 1000);
+          setScanning(false);
+          // Wallet lookups are not contract scans: they never enter the
+          // recent-scans list or the registry.
+          if (!json.isEOA) {
+            saveRecent({
+              address: json.address,
+              name: json.token.name,
+              symbol: json.token.symbol,
+              score: json.score,
+              band: json.band,
+              scannedAt: json.scannedAt,
+            });
+          }
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          setError(e instanceof Error ? e.message : "Scan failed. Try again.");
+          setScanning(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    },
+    [address],
+  );
+
+  useEffect(() => runScan(false), [runScan]);
 
   return (
     <>
@@ -85,7 +99,13 @@ export default function ScanPageClient({ address }: { address: string }) {
           </div>
         </div>
       )}
-      {result && <ScanReport result={result} elapsed={elapsed} />}
+      {result && (
+        <ScanReport
+          result={result}
+          elapsed={elapsed}
+          onRetryDossier={() => runScan(true)}
+        />
+      )}
     </>
   );
 }
