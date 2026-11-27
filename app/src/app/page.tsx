@@ -171,7 +171,7 @@ export default function Home() {
                 public on-chain data, and market signals.
               </p>
               <p className="mt-6 font-mono text-xs text-bone-dim">
-                9 checks · 4 data sources · 133 tests · same findings, same
+                9 checks · 4 data sources · 137 tests · same findings, same
                 score
               </p>
             </div>
@@ -365,7 +365,7 @@ export default function Home() {
             </div>
             <Reveal delay={150}>
               <p className="mt-6 rounded-2xl border border-haunt-border bg-haunt-panel p-5 text-sm leading-relaxed text-bone-dim">
-                133 tests. Property tests prove determinism (same findings,
+                137 tests. Property tests prove determinism (same findings,
                 any order, same score) and monotonicity (adding a finding
                 never lowers the score). Live fixture scans re-check SELO,
                 AGIO, and CAKE on every engine save. Repo:{" "}
